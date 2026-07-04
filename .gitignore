@@ -1,0 +1,53 @@
+# Data - excluded from version control
+/data/
+
+# Checkpoints and model weights - excluded (large files)
+/checkpoints/
+*.pt
+*.pth
+*.ckpt
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Test outputs
+outputs/
+predictions/
+*.png.bak
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+
+# OS files
+Thumbs.db
