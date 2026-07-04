@@ -1,5 +1,5 @@
 # Data - excluded from version control
-/
+/data/
 
 # Checkpoints and model weights - excluded (large files)
 /checkpoints/
