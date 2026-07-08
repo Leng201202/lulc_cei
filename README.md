@@ -1,30 +1,33 @@
 # LULC CEI
 
 Semantic-segmentation project for land-use/land-cover (LULC) mapping. The
-current experiment configuration targets the OpenEarthMap dataset and a U-Net
-with an EfficientNet-B4 encoder.
+current experiment configuration targets the [OpenEarthMap](https://open-earth-map.org/)
+dataset and a U-Net with an EfficientNet-B4 encoder.
 
-The repository is under active development. Dataset inspection, pixel
-statistics, model construction, loss construction, and segmentation metrics
-are implemented. The training, validation, evaluation, and prediction
-pipelines are still placeholders and cannot yet run end to end.
+The pipeline now runs end to end: dataset loading, model/loss/optimizer
+construction, a training loop with mixed precision, validation with
+segmentation metrics, checkpointing, evaluation, and inference on new imagery
+are all implemented. The dataset factory is wired for OpenEarthMap; IRSA_Map
+and LoveDA are reserved but not yet implemented.
 
 ## Repository Structure
 
 ```text
 lulc_cei/
 ├── configs/
-│   ├── unet/
-│   │   └── unet_effb4_oem.yml
-│   └── unetformer/
-├── data/
+│   └── unet/
+│       └── unet_effb4_oem.yml
+├── data/                     # local datasets (git-ignored)
 │   ├── OpenEarthMap/
 │   ├── IRSA_Map/
-│   └── LovaDA/
-├── experiments/
+│   └── LoveDA/
+├── experiments/              # checkpoints, logs, predictions (generated)
 ├── src/
 │   ├── datasets/
-│   │   └── openearthmap_dataset.py
+│   │   ├── dataset_factory.py
+│   │   ├── openearthmap_dataset.py
+│   │   ├── irsa_dataset.py       # empty (reserved)
+│   │   └── loveda_dataset.py     # empty (reserved)
 │   ├── engine/
 │   │   ├── trainer.py
 │   │   └── validator.py
@@ -33,14 +36,19 @@ lulc_cei/
 │   ├── metrics/
 │   │   └── segmentation_metrics.py
 │   ├── models/
-│   │   ├── model_factory.py
-│   │   └── unet.py
+│   │   └── model_factory.py
 │   └── utils/
 │       ├── config.py
 │       └── visualization.py
 ├── tools/
-│   ├── check_dataset.py
-│   └── count_pixels.py
+│   └── oem/
+│       ├── check_dataset.py
+│       ├── check_missing_files.py
+│       ├── count_pixels.py
+│       ├── create_labeled_splits.py
+│       └── test_dataset_loader.py
+├── tests/
+│   └── smoke_test.py
 ├── train.py
 ├── evaluate.py
 ├── predict.py
@@ -52,182 +60,7 @@ lulc_cei/
 Generated folders such as `.venv/`, `.git/`, and `__pycache__/` are local
 environment or version-control metadata, not project modules.
 
-## Folder and File Reference
-
-### Root files
-
-| Path | Status | Responsibility |
-| --- | --- | --- |
-| `README.md` | Implemented | Documents the repository, dataset, commands, and implementation status. |
-| `requirements.txt` | Implemented | Lists the Python packages required for data loading, augmentation, modeling, metrics, and visualization. Versions are not pinned. |
-| `.gitignore` | Implemented | Excludes datasets, virtual environments, caches, checkpoints, predictions, logs, and editor files from Git. |
-| `train.py` | Empty | Intended command-line entry point for model training. |
-| `evaluate.py` | Empty | Intended entry point for checkpoint evaluation. |
-| `predict.py` | Empty | Intended entry point for inference on new imagery. |
-| `test.py` | Empty | Reserved for tests or test-split execution; no behavior is currently defined. |
-
-### `configs/`
-
-Stores YAML experiment configurations.
-
-- `configs/unet/unet_effb4_oem.yml` defines the current OpenEarthMap
-  experiment, dataset metadata, U-Net architecture, training hyperparameters,
-  and requested metrics.
-- `configs/unetformer/` is empty and reserved for future UNetFormer
-  configurations.
-
-Configuration sections:
-
-| Section | Purpose |
-| --- | --- |
-| `experiment` | Experiment name and output directory. |
-| `dataset` | Dataset root, crop/image sizes, number of classes, and ignored target value. |
-| `model` | Architecture, encoder, pretrained encoder weights, input channels, and output classes. |
-| `training` | Batch size, epochs, learning rate, optimizer, loss, and mixed-precision flag. |
-| `metrics` | Names of the metrics intended for reporting. |
-
-Only some values are currently consumed by code. For example, the dataset
-class uses `crop_size` and `ignore_index`, the model factory uses the `model`
-section, and the loss factory uses `training.loss`. No trainer currently uses
-the batch size, epochs, learning rate, optimizer, or mixed-precision settings.
-
-### `data/`
-
-Contains local datasets and is excluded from Git. Dataset contents are
-intentionally not documented here.
-
-### `experiments/`
-
-Intended destination for checkpoints, metrics, logs, and generated outputs.
-The current experiment directory is empty because no training pipeline has
-been implemented.
-
-### `src/`
-
-- `src/__init__.py` marks the main source directory as a Python package.
-
-### `src/datasets/`
-
-- `src/datasets/__init__.py` marks the directory as a Python package.
-- `src/datasets/openearthmap_dataset.py` is currently empty and is the intended location
-  for `OpenEarthMapDataset`.
-
-The current `OpenEarthMapDataset` implementation is instead located in
-`src/models/unet.py`. It reads a split file, resolves image and label paths,
-remaps mask values, applies Albumentations transforms, and returns an image
-tensor with a `long` mask tensor.
-
-Training transforms:
-
-1. Random `crop_size × crop_size` crop.
-2. Random horizontal and vertical flips.
-3. Random 90-degree rotation.
-4. ImageNet normalization.
-5. Conversion to PyTorch tensors.
-
-Validation/test transforms use a center crop, ImageNet normalization, and
-tensor conversion.
-
-### `src/models/`
-
-- `src/models/model_factory.py` builds models from
-  `segmentation-models-pytorch`. It currently supports U-Net and DeepLabV3.
-- `src/models/unet.py` currently contains `OpenEarthMapDataset`; despite its filename, it
-  does not define a U-Net model.
-- `src/models/__init__.py` is an empty package marker.
-
-The model factory expects lowercase names (`unet` or `deeplabv3`), but the
-current configuration contains `UNet`. This mismatch must be normalized before
-model construction will work.
-
-### `src/losses/`
-
-- `src/losses/loss_factory.py` provides:
-  - cross-entropy loss;
-  - multiclass Dice loss;
-  - `CEDiceLoss`, which adds cross-entropy and Dice losses.
-- `src/losses/__init__.py` is an empty package marker.
-
-All losses use the dataset `ignore_index`, currently `255`.
-
-### `src/metrics/`
-
-- `src/metrics/segmentation_metrics.py` maintains a confusion matrix and computes:
-  - overall accuracy (`OA`);
-  - mean intersection over union (`mIoU`);
-  - mean F1 score (`mF1`);
-  - per-class IoU and F1;
-  - the full confusion matrix.
-- `src/metrics/__init__.py` is an empty package marker.
-
-Predictions and targets may be NumPy arrays or PyTorch tensors with shape
-`[batch, height, width]`. Ignored target pixels are removed before updating
-the confusion matrix.
-
-### `src/engine/`
-
-- `src/engine/trainer.py` is empty and is intended to contain the epoch/batch training
-  loop, optimizer updates, mixed precision, logging, and checkpoint saving.
-- `src/engine/validator.py` is empty and is intended to run validation and aggregate
-  losses and metrics.
-- `src/engine/__init__.py` is an empty package marker.
-
-### `src/utils/`
-
-- `src/utils/config.py` implements `load_config()`, which parses a YAML file into a
-  Python dictionary.
-- `src/utils/visualization.py` is empty and is reserved for image, mask, prediction, and
-  metric visualization.
-- `src/utils/__init__.py` is an empty package marker.
-
-### `tools/`
-
-#### `check_dataset.py`
-
-Performs a quick structural and visual-data sanity check:
-
-- reads the selected split;
-- supports both flat datasets and OpenEarthMap region folders;
-- locates image/mask pairs by filename;
-- loads a configurable number of samples;
-- prints paths, shapes, mask types, and unique mask values;
-- reports image/mask size mismatches.
-
-```bash
-python tools/check_dataset.py \
-  --config configs/unet/unet_effb4_oem.yml \
-  --split train \
-  --num_samples 5
-```
-
-#### `count_pixels.py`
-
-Counts each raw mask value and its dataset percentage:
-
-- indexes masks under `<region>/labels/`;
-- reads the requested split;
-- counts values with NumPy;
-- reports missing masks, total pixels, counts, and percentages;
-- accepts `--max_files` for a quicker partial analysis.
-
-Full training split:
-
-```bash
-python tools/count_pixels.py \
-  --config configs/unet/unet_effb4_oem.yml \
-  --split train
-```
-
-Quick 100-mask sample:
-
-```bash
-python tools/count_pixels.py \
-  --config configs/unet/unet_effb4_oem.yml \
-  --split train \
-  --max_files 100
-```
-
-## Intended Processing Flow
+## Pipeline Overview
 
 ```text
 YAML configuration
@@ -236,22 +69,123 @@ YAML configuration
 OpenEarthMap split + region files
         |
         v
-Dataset loading, mask remapping, augmentation
+Dataset loading, mask remapping (1-8 -> 0-7), augmentation
         |
         v
-Segmentation model -> [B, 8, H, W] logits
+U-Net (EfficientNet-B4) -> [B, 8, H, W] logits
         |
-        +--> CE/Dice loss -> optimizer update
+        +--> CE + Dice loss -> AdamW update (optional AMP)
         |
-        +--> argmax predictions -> confusion matrix -> OA/mIoU/mF1
+        +--> argmax -> confusion matrix -> OA / mIoU / mF1 / per-class
         |
         v
-Checkpoints, metrics, and visualizations
+Checkpoints (last + best-by-mIoU), JSON logs, colorized predictions
 ```
 
-The configuration, dataset logic, model factory, loss factory, and metrics are
-intended to connect in this order. The engine and root entry-point files still
-need implementation to complete the flow.
+## Folder and File Reference
+
+### Root entry points
+
+| Path | Responsibility |
+| --- | --- |
+| `train.py` | Trains a model: builds datasets/model/loss/optimizer, runs the epoch loop, logs per-epoch metrics to JSON, and saves `last`/`best` checkpoints. |
+| `evaluate.py` | Loads a checkpoint and reports loss/OA/mIoU/mF1 on a chosen split, writing `<split>_metrics.json`. |
+| `predict.py` | Runs inference on a single image or a directory and saves colorized prediction masks (and optional side-by-side panels). |
+| `test.py` | Thin wrapper around `evaluate.py` that defaults `--split` to `test`. |
+| `requirements.txt` | Python dependencies. Versions are not pinned. |
+| `.gitignore` | Excludes data, environments, caches, checkpoints, predictions, and logs. |
+
+### `configs/`
+
+`configs/unet/unet_effb4_oem.yml` defines the current OpenEarthMap experiment.
+
+| Section | Purpose | Consumed by |
+| --- | --- | --- |
+| `experiment` | Experiment name and `output_dir`. | `train.py`, `evaluate.py`, `predict.py` |
+| `dataset` | Root, region path patterns, split files, crop size, `num_classes`, `ignore_index`. | `OpenEarthMapDataset`, tools |
+| `model` | Architecture, encoder, pretrained weights, channels, classes. | `build_model` |
+| `training` | Batch size, epochs, learning rate, optimizer, `weight_decay`, loss, `mix_precision`, `num_workers`. | `train.py`, `build_loss` |
+| `metrics` | Names of metrics intended for reporting. | reference only |
+
+`train.py` calls `validate_config`, which requires the `experiment`,
+`dataset`, `model`, and `training` sections and enforces
+`dataset.num_classes == model.num_classes`.
+
+### `src/datasets/`
+
+- `dataset_factory.py` — `build_dataset(config, split)` dispatches on
+  `dataset.name`. `OpenEarthMap` is implemented; `IRSA_Map` and `LoveDA` raise
+  `NotImplementedError`.
+- `openearthmap_dataset.py` — `OpenEarthMapDataset`. Reads a split file,
+  resolves each region with `filename.rsplit("_", 1)` (so multi-underscore
+  regions such as `buenos_aires` resolve correctly), reads image/mask pairs
+  with OpenCV, remaps raw labels `1-8` to training classes `0-7` (everything
+  else becomes `ignore_index`), validates mask values, and applies
+  Albumentations transforms.
+
+Training transforms: random crop, horizontal/vertical flips, random 90°
+rotation, ImageNet normalization, tensor conversion. Validation/test
+transforms: center crop, ImageNet normalization, tensor conversion.
+
+### `src/models/`
+
+- `model_factory.py` — `build_model(config)` builds a
+  `segmentation-models-pytorch` model. Names are lowercased; `unet`/`u-net` and
+  `deeplabv3` are supported.
+
+### `src/losses/`
+
+- `loss_factory.py` — `build_loss(config)` returns cross-entropy, multiclass
+  Dice, or `CEDiceLoss` (cross-entropy + Dice) per `training.loss`. All losses
+  honor `dataset.ignore_index`.
+
+### `src/metrics/`
+
+- `segmentation_metrics.py` — `SegmentationMetrics` accumulates a confusion
+  matrix and computes OA, mIoU, mF1, per-class IoU/F1, class support, and the
+  full confusion matrix. Ignored pixels and out-of-range values are dropped
+  before updating. Accepts NumPy arrays or PyTorch tensors of shape
+  `[B, H, W]`.
+
+### `src/engine/`
+
+- `trainer.py` — `train_one_epoch(...)` runs the batch loop with optional
+  `torch.amp` mixed precision and returns the average loss.
+- `validator.py` — `validate_one_epoch(...)` runs evaluation, aggregates the
+  loss, and returns the metrics dictionary.
+
+### `src/utils/`
+
+- `config.py` — `load_config(path)` parses a YAML file into a dict.
+- `visualization.py` — OpenEarthMap class names and the official RGB palette,
+  plus helpers to decode class-index masks to color (`decode_mask`),
+  denormalize image tensors, overlay masks, and save prediction masks/panels.
+
+The palette (training index → class → RGB):
+
+| Index | Class | RGB |
+| --- | --- | --- |
+| 0 | Bareland | (128, 0, 0) |
+| 1 | Rangeland | (0, 255, 36) |
+| 2 | Developed space | (148, 148, 148) |
+| 3 | Road | (255, 255, 255) |
+| 4 | Tree | (34, 97, 38) |
+| 5 | Water | (0, 69, 255) |
+| 6 | Agriculture land | (75, 181, 73) |
+| 7 | Building | (222, 31, 7) |
+
+### `tools/oem/`
+
+Diagnostic and data-preparation scripts for OpenEarthMap:
+
+- `check_dataset.py` — structural/visual sanity check of image/mask pairs.
+- `check_missing_files.py` — reports and filters out samples with missing
+  image or mask files.
+- `count_pixels.py` — counts raw mask values and their dataset percentages.
+- `create_labeled_splits.py` — builds 60/10/30 train/val/test splits from the
+  labeled train+val data (the official test split has no masks).
+- `test_dataset_loader.py` — loads random samples through
+  `OpenEarthMapDataset` and prints tensor shapes/dtypes/unique values.
 
 ## Installation
 
@@ -259,52 +193,167 @@ From the repository root:
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-The virtual environment is active when the shell prompt begins with
-`(.venv)`.
+Dependency versions are not pinned, so installs may vary over time.
+
+## Usage
+
+Prepare labeled splits (once):
+
+```bash
+python tools/oem/create_labeled_splits.py --config configs/unet/unet_effb4_oem.yml
+```
+
+Train:
+
+```bash
+python train.py --config configs/unet/unet_effb4_oem.yml
+```
+
+Outputs are written under `experiment.output_dir`:
+`checkpoints/last_checkpoint.pth`, `checkpoints/best_checkpoint.pth`, and
+`logs/training_logs.json`.
+
+Evaluate a checkpoint:
+
+```bash
+python evaluate.py \
+  --config configs/unet/unet_effb4_oem.yml \
+  --checkpoint experiments/exp_01_unet_effb4_oem/checkpoints/best_checkpoint.pth \
+  --split test
+```
+
+`test.py` is a shortcut for evaluating the test split:
+
+```bash
+python test.py \
+  --config configs/unet/unet_effb4_oem.yml \
+  --checkpoint experiments/exp_01_unet_effb4_oem/checkpoints/best_checkpoint.pth
+```
+
+Predict on new imagery (a file or a directory):
+
+```bash
+python predict.py \
+  --config configs/unet/unet_effb4_oem.yml \
+  --checkpoint experiments/exp_01_unet_effb4_oem/checkpoints/best_checkpoint.pth \
+  --input path/to/images \
+  --panel
+```
+
+Colorized masks (`<name>_pred.png`) and optional panels (`<name>_panel.png`)
+are saved to `<output_dir>/predictions` by default.
+
+For imagery too large to fit in memory at once, enable sliding-window
+inference. Overlapping tiles are run independently and their softmax
+probabilities are averaged over the overlaps:
+
+```bash
+python predict.py \
+  --config configs/unet/unet_effb4_oem.yml \
+  --checkpoint experiments/exp_01_unet_effb4_oem/checkpoints/best_checkpoint.pth \
+  --input path/to/images \
+  --tile_size 512 --overlap 128
+```
+
+### Using the OpenEarthMap-SAR pretrained baseline
+
+The official [OpenEarthMap-SAR](https://github.com/cliffbb/OpenEarthMap-SAR)
+U-Net/EfficientNet-B4 weights can be used directly for evaluation and
+inference via `configs/unet/unet_effb4_oem_pretrained.yml`. That checkpoint
+differs from a checkpoint trained here in three ways, all handled by the
+config and loader:
+
+- **9-class head** (index 0 is a `background`/`unknown` class, 1-8 are the land
+  cover classes). `model.pretrained_classes: 9` builds the 9-class head and the
+  loader drops the leading background channel, so the model behaves as an
+  8-class model aligned with training indices 0-7.
+- **SCSE decoder attention** (`model.decoder_attention_type: scse`).
+- A **bare `state_dict`** rather than this project's `{"model_state_dict": ...}`
+  wrapper; `src/models/checkpoint.py` accepts either format.
+- **`[0,1]` input scaling** (divide by 255), not ImageNet mean/std. This is set
+  with `dataset.normalization: zero_one`; using `imagenet` normalization with
+  these weights produces incoherent predictions.
+
+```bash
+# Evaluate on a labeled split
+python evaluate.py \
+  --config configs/unet/unet_effb4_oem_pretrained.yml \
+  --checkpoint pretrain_weight/RGB_Real_5_u-efficientnet-b4.pth \
+  --split test
+
+# Predict on new optical imagery
+python predict.py \
+  --config configs/unet/unet_effb4_oem_pretrained.yml \
+  --checkpoint pretrain_weight/RGB_Real_5_u-efficientnet-b4.pth \
+  --input path/to/images --panel
+```
+
+These weights are for **optical (RGB)** imagery. The `dataset.normalization`
+value must stay `zero_one` for them; switching it back to `imagenet` reproduces
+the incoherent-prediction failure.
+
+### Fine-tuning (warm start)
+
+`train.py --init-weights <path>` loads a checkpoint into the model before
+training so you can fine-tune from a pretrained model instead of starting from
+the ImageNet encoder. It accepts either this project's checkpoints or a bare
+`state_dict`, and the low-LR `unet_effb4_oem_finetune.yml` config matches the
+pretrained architecture (SCSE + 9-class head) so the warm start loads cleanly.
+
+```bash
+python train.py \
+  --config configs/unet/unet_effb4_oem_finetune.yml \
+  --init-weights pretrain_weight/RGB_Real_5_u-efficientnet-b4.pth
+```
+
+Fine-tuning on a new domain (e.g. imagery unlike OpenEarthMap's regions)
+requires labels for that domain; masks must use the raw OpenEarthMap encoding
+(`0` = background/unknown, `1`-`8` = the land-cover classes) so the dataset
+remaps them to training indices `0`-`7`.
+
+## Testing
+
+`tests/smoke_test.py` exercises the runtime paths with synthetic data (no
+dataset or trained weights required): metrics, the visualization palette
+helpers, the loss forward/backward pass, model construction, and both the
+full-image and tiled inference paths. Checks that require
+`segmentation_models_pytorch` are skipped (not failed) when it is not
+installed.
+
+```bash
+python tests/smoke_test.py
+```
 
 ## Current Configuration
 
-`configs/unet/unet_effb4_oem.yml` currently describes:
+`configs/unet/unet_effb4_oem.yml` describes:
 
-- OpenEarthMap at `data/OpenEarthMap`;
-- 1,000 × 1,000 source imagery;
-- 512 × 512 training crops;
-- eight output classes;
-- ignored training target `255`;
+- OpenEarthMap at `data/OpenEarthMap`, `<region>/images` and `<region>/labels`;
+- 1024 × 1024 source imagery, 512 × 512 crops;
+- eight output classes; ignored training target `255`;
 - U-Net with an ImageNet-pretrained EfficientNet-B4 encoder;
 - batch size 2 for 50 epochs;
-- Adam with learning rate `1e-4`;
-- combined cross-entropy and Dice loss;
-- mixed-precision training.
+- AdamW at learning rate `1e-4`, weight decay `0.01`;
+- combined cross-entropy + Dice loss;
+- mixed-precision training (used only on CUDA).
 
-These are experiment intentions until the trainer is implemented.
+## Notes and Next Steps
 
-## Known Implementation Gaps
+1. `predict.py` runs full-image inference by default (reflect-padding inputs
+   to a multiple of 32); use `--tile_size` for imagery too large for memory.
+2. `src/datasets/irsa_dataset.py` and `loveda_dataset.py` are reserved stubs.
+3. Dependency versions are unpinned; pin them for reproducible runs.
+4. Consider a learning-rate scheduler and resume-from-checkpoint support.
+5. `tests/smoke_test.py` covers inference, metrics, losses, and visualization;
+   dataset mask-remapping/path-resolution tests would still be valuable.
 
-1. `train.py`, `evaluate.py`, `predict.py`, and `test.py` are empty.
-2. `src/engine/trainer.py` and `src/engine/validator.py` are empty.
-3. `src/datasets/openearthmap_dataset.py` is empty; the dataset class is
-   currently misplaced in `src/models/unet.py`.
-4. The dataset class requires `image_dir`, `mask_dir`, and split keys that the
-   YAML does not define. The diagnostic tools provide OpenEarthMap defaults,
-   but the dataset class does not.
-5. The dataset class extracts a region with `filename.split("_")[0]`. This
-   fails for region names containing underscores, such as `buenos_aires`.
-6. The model factory expects lowercase model names, while the YAML uses
-   `UNet`.
-7. `src/utils/visualization.py` is empty.
-8. Dependency versions are not pinned, so installs may vary over time.
+## Reference
 
-## Recommended Next Steps
-
-1. Move and harden `OpenEarthMapDataset` under `src/datasets/`.
-2. Resolve images through a filename index instead of parsing region names.
-3. Normalize model names in the model factory.
-4. Implement trainer and validator engines.
-5. Implement the root train/evaluate/predict commands.
-6. Add focused tests for mask remapping, path resolution, losses, and metrics.
+Xia et al., "OpenEarthMap: A Benchmark Dataset for Global High-Resolution Land
+Cover Mapping," WACV 2023. Project page: https://open-earth-map.org/ ·
+Example code: https://github.com/bao18/open_earth_map

@@ -1,0 +1,43 @@
+experiment:
+  name: exp_03_oem_finetune
+  output_dir: ./experiments/exp_03_oem_finetune
+dataset:
+  name: OpenEarthMap
+  root: data/OpenEarthMap
+  image_dir: <region>/images
+  mask_dir: <region>/labels
+  train_split: train_split_60.txt
+  val_split: val_split_10.txt
+  test_split: test_split_30.txt
+  image_size: 512
+  crop_size: 512
+  original_size: 1024
+  num_classes: 8
+  ignore_index: 255
+  # Must match the pretrained weights being fine-tuned (see the pretrained
+  # config); these expect [0,1]-scaled inputs, not ImageNet mean/std.
+  normalization: zero_one
+model:
+  # Same architecture as the OpenEarthMap-SAR pretrained weights so the warm
+  # start loads cleanly: SCSE decoder + 9-class head (background dropped -> 8).
+  name: unet
+  encoder_name: efficientnet-b4
+  encoder_weights: imagenet
+  in_channels: 3
+  num_classes: 8
+  decoder_attention_type: scse
+  pretrained_classes: 9
+training:
+  batch_size: 2
+  epochs: 30
+  # Low LR: fine-tuning a strong pretrained model, not training from scratch.
+  learning_rate: 0.00002
+  optimizer: AdamW
+  loss: ce_dice
+  mix_precision: true
+  weight_decay: 0.01
+metrics:
+  - OA
+  - mIoU
+  - mF1
+  - per_class_IoU

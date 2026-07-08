@@ -6,6 +6,8 @@ from torch.utils.data import Dataset
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
+from src.datasets.transforms import build_normalize
+
 
 class OpenEarthMapDataset(Dataset):
     """Load OpenEarthMap image/mask pairs for semantic segmentation.
@@ -85,6 +87,9 @@ class OpenEarthMapDataset(Dataset):
 
     def _build_transform(self, split):
         """Build split-specific image and mask transformations."""
+        # Normalization must match the model weights (see src/datasets/transforms).
+        normalize = build_normalize(self.config)
+
         if split == "train":
             return A.Compose([
                 # Albumentations applies geometric operations identically to
@@ -96,10 +101,7 @@ class OpenEarthMapDataset(Dataset):
                 A.HorizontalFlip(p=0.5),
                 A.VerticalFlip(p=0.5),
                 A.RandomRotate90(p=0.5),
-                A.Normalize(
-                    mean=(0.485, 0.456, 0.406),
-                    std=(0.229, 0.224, 0.225)
-                ),
+                normalize,
                 ToTensorV2()
             ])
 
@@ -110,10 +112,7 @@ class OpenEarthMapDataset(Dataset):
                     height=self.crop_size,
                     width=self.crop_size
                 ),
-                A.Normalize(
-                    mean=(0.485, 0.456, 0.406),
-                    std=(0.229, 0.224, 0.225)
-                ),
+                normalize,
                 ToTensorV2()
             ])
 

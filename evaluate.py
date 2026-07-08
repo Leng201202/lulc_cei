@@ -8,16 +8,10 @@ from torch.utils.data import DataLoader
 from src.datasets.dataset_factory import build_dataset
 from src.engine.validator import validate_one_epoch
 from src.losses.loss_factory import build_loss
+from src.models.checkpoint import load_model_weights
 from src.models.model_factory import build_model
 from src.utils.config import load_config
 from train import select_device, validate_config
-
-
-def load_checkpoint(path, device):
-    checkpoint = torch.load(path, map_location=device)
-    if "model_state_dict" not in checkpoint:
-        raise KeyError(f"Checkpoint does not contain model_state_dict: {path}")
-    return checkpoint
 
 
 def main():
@@ -56,8 +50,8 @@ def main():
     )
 
     model = build_model(config).to(device)
-    checkpoint = load_checkpoint(args.checkpoint, device)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    checkpoint = torch.load(args.checkpoint, map_location=device)
+    load_model_weights(model, checkpoint)
 
     criterion = build_loss(config)
     result = validate_one_epoch(

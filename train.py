@@ -10,6 +10,7 @@ from src.datasets.dataset_factory import build_dataset
 from src.engine.trainer import train_one_epoch
 from src.engine.validator import validate_one_epoch
 from src.losses.loss_factory import build_loss
+from src.models.checkpoint import load_model_weights
 from src.models.model_factory import build_model
 from src.utils.config import load_config
 
@@ -93,10 +94,23 @@ def format_metric(value):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, required=True)
+    parser.add_argument(
+        "--init-weights",
+        type=str,
+        default=None,
+        help="Warm-start: load these weights into the model before training "
+             "(e.g. a pretrained checkpoint to fine-tune from). Accepts this "
+             "project's checkpoints or a bare state_dict.",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
     validate_config(config)
+
+    # When warm-starting, the provided weights replace the encoder, so skip the
+    # pretrained-encoder download that build_model would otherwise trigger.
+    if args.init_weights:
+        config["model"]["encoder_weights"] = None
 
     experiment_config = config["experiment"]
     dataset_config = config["dataset"]
@@ -132,13 +146,17 @@ def main():
     print("Validation samples:", len(val_dataset))
 
     model = build_model(config).to(device)
+    if args.init_weights:
+        checkpoint = torch.load(args.init_weights, map_location=device)
+        load_model_weights(model, checkpoint)
+        print(f"Warm-started from: {args.init_weights}")
     criterion = build_loss(config)
     optimizer = build_optimizer(model, training_config)
 
     mixed_precision = training_config.get("mix_precision", False)
     scaler = None
     if mixed_precision and device.type == "cuda":
-        scaler = torch.cuda.amp.GradScaler()
+        scaler = torch.amp.GradScaler("cuda")
 
     best_miou = -1.0
     logs = []

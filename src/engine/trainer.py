@@ -35,7 +35,7 @@ def train_one_epoch(
         )
 
         if use_amp:
-            with torch.autocast(
+            with torch.amp.autocast(
                 device_type="cuda",
                 dtype=torch.float16
             ):
