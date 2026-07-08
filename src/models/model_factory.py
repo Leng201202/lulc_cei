@@ -4,13 +4,13 @@ import segmentation_models_pytorch as smp
 def build_model(config):
     model_config = config["model"]
 
-    model_name = model_config["name"]
+    model_name = model_config["name"].lower()
     encoder_name = model_config["encoder_name"]
     encoder_weights = model_config["encoder_weights"]
     in_channels = model_config["in_channels"]
     num_classes = model_config["num_classes"]
 
-    if model_name == "unet":
+    if model_name in {"unet", "u-net"}:
         model = smp.Unet(
             encoder_name=encoder_name,
             encoder_weights=encoder_weights,

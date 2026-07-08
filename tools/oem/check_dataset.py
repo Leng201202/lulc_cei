@@ -35,6 +35,13 @@ def find_file(folder, name):
     return None
 
 
+def resolve_region_path(root, pattern, filename):
+    stem = os.path.splitext(filename)[0]
+    region = stem.rsplit("_", 1)[0]
+    folder = pattern.replace("<region>", region)
+    return os.path.join(root, folder, filename)
+
+
 def index_region_files(root, folder_name):
     """Index files stored as <root>/<region>/<folder_name>/<filename>."""
     index = {}
@@ -84,16 +91,22 @@ def main():
     split_path = os.path.join(split_dir, split_file)
     names = read_split(split_path)
 
-    if image_dir_name and mask_dir_name:
+    if (
+        image_dir_name and mask_dir_name and
+        "<region>" not in image_dir_name and
+        "<region>" not in mask_dir_name
+    ):
         image_dir = os.path.join(root, image_dir_name)
         mask_dir = os.path.join(root, mask_dir_name)
         image_index = None
         mask_index = None
+        use_region_patterns = False
     else:
-        image_dir = "<region>/images"
-        mask_dir = "<region>/labels"
+        image_dir = image_dir_name or "<region>/images"
+        mask_dir = mask_dir_name or "<region>/labels"
         image_index = index_region_files(root, "images")
         mask_index = index_region_files(root, "labels")
+        use_region_patterns = bool(image_dir_name and mask_dir_name)
 
     print("=" * 50)
     print("Dataset Check")
@@ -107,7 +120,14 @@ def main():
     all_mask_values = set()
     for i, name in enumerate(names[:args.num_samples]):
 
-        if image_index is None:
+        if use_region_patterns:
+            image_path = resolve_region_path(root, image_dir_name, name)
+            mask_path = resolve_region_path(root, mask_dir_name, name)
+            if not os.path.exists(image_path):
+                image_path = None
+            if not os.path.exists(mask_path):
+                mask_path = None
+        elif image_index is None:
             image_path = find_file(image_dir, name)
             mask_path = find_file(mask_dir, name)
         else:
@@ -159,8 +179,10 @@ def main():
     print("Summary")
     print("=" * 50)
     print("Unique mask values found:", sorted(all_mask_values))
-    expected_classes = list(range(config["dataset"]["num_classes"]))
-    print("Expected class IDs:", expected_classes)
+    raw_classes = list(range(config["dataset"]["num_classes"] + 1))
+    processed_classes = list(range(config["dataset"]["num_classes"]))
+    print("Expected raw mask IDs:", raw_classes)
+    print("Expected processed class IDs:", processed_classes)
     print("Ignore index:", config["dataset"]["ignore_index"])
 
 if __name__ == "__main__":
