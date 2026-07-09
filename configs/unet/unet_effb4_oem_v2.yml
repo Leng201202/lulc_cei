@@ -1,6 +1,6 @@
 experiment:
-  name: exp_01_unet_effb4_oem
-  output_dir: ./experiments/exp_01_unet_effb4_oem
+  name: exp_02_unet_effb4_oem_paper
+  output_dir: ./experiments/exp_02_unet_effb4_oem_paper
 dataset:
   name: OpenEarthMap
   root: data/OpenEarthMap/OpenEarthMap_wo_xBD
@@ -14,6 +14,9 @@ dataset:
   original_size: 1024
   num_classes: 8
   ignore_index: 255
+  normalization: imagenet   # mean/std ImageNet (matches paper)
+  augment: false            # paper: random crop only, no flip/rotate
+  eval_mode: full           # paper: full-image eval (pad to /32, unpad via ignore)
 model:
   name: unet
   encoder_name: efficientnet-b4
@@ -21,15 +24,17 @@ model:
   in_channels: 3
   num_classes: 8
 training:
-  batch_size: 2
-  epochs: 50
+  batch_size: 8
+  epochs: 200
   learning_rate: 0.0001
   optimizer: AdamW
-  loss: ce_dice
+  weight_decay: 0.000001    # 1e-6 (paper)
+  loss: cross_entropy       # paper: CrossEntropyLoss only
+  scheduler: none           # paper: constant LR
   mix_precision: true
-  weight_decay: 0.01
 metrics:
   - OA
   - mIoU
   - mF1
   - per_class_IoU
+  - per_class_F1

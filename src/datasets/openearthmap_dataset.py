@@ -89,32 +89,54 @@ class OpenEarthMapDataset(Dataset):
         """Build split-specific image and mask transformations."""
         # Normalization must match the model weights (see src/datasets/transforms).
         normalize = build_normalize(self.config)
+        dataset_config = self.config["dataset"]
+
+        # Constant padding: mask padded with ignore_index so the border never
+        # contributes to loss/metrics; image padded with zeros (masked out).
+        def pad_to(min_h, min_w, div=None):
+            return A.PadIfNeeded(
+                min_height=min_h,
+                min_width=min_w,
+                pad_height_divisor=div,
+                pad_width_divisor=div,
+                border_mode=cv2.BORDER_CONSTANT,
+                value=0,
+                mask_value=self.ignore_index,
+            )
 
         if split == "train":
-            return A.Compose([
-                # Albumentations applies geometric operations identically to
-                # the image and mask, preserving pixel-level alignment.
-                A.RandomCrop(
-                    height=self.crop_size,
-                    width=self.crop_size
-                ),
-                A.HorizontalFlip(p=0.5),
-                A.VerticalFlip(p=0.5),
-                A.RandomRotate90(p=0.5),
-                normalize,
-                ToTensorV2()
-            ])
+            # OpenEarthMap tiles are not a uniform size (e.g. rio tiles are
+            # 406px), so smaller-than-crop images are padded up before cropping.
+            transforms = [
+                pad_to(self.crop_size, self.crop_size),
+                # Albumentations applies geometric ops identically to image and
+                # mask, preserving pixel-level alignment.
+                A.RandomCrop(height=self.crop_size, width=self.crop_size),
+            ]
+            # The OpenEarthMap paper trains with random cropping only; extra
+            # flip/rotate augmentation is opt-in via dataset.augment.
+            if dataset_config.get("augment", True):
+                transforms += [
+                    A.HorizontalFlip(p=0.5),
+                    A.VerticalFlip(p=0.5),
+                    A.RandomRotate90(p=0.5),
+                ]
+            transforms += [normalize, ToTensorV2()]
+            return A.Compose(transforms)
 
-        else:
-            return A.Compose([
-                # Evaluation is deterministic: only center-crop and normalize.
-                A.CenterCrop(
-                    height=self.crop_size,
-                    width=self.crop_size
-                ),
-                normalize,
-                ToTensorV2()
-            ])
+        # Evaluation is deterministic. "full" (paper protocol) keeps the whole
+        # image, padding only up to the next multiple of 32 so the encoder's
+        # 32x downsampling divides evenly; the padding is ignored in metrics.
+        # "crop" center-crops to crop_size (faster, but discards image borders).
+        eval_mode = dataset_config.get("eval_mode", "full")
+        if eval_mode == "full":
+            return A.Compose([pad_to(None, None, div=32), normalize, ToTensorV2()])
+        return A.Compose([
+            pad_to(self.crop_size, self.crop_size),
+            A.CenterCrop(height=self.crop_size, width=self.crop_size),
+            normalize,
+            ToTensorV2(),
+        ])
 
     def __len__(self):
         return len(self.file_names)

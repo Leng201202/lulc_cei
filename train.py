@@ -75,7 +75,29 @@ def build_optimizer(model, training_config):
     raise ValueError(f"Unknown optimizer: {training_config['optimizer']}")
 
 
+def build_scheduler(optimizer, training_config, epochs):
+    """Build an optional per-epoch LR scheduler from ``training.scheduler``.
+
+    Longer runs overfit without LR decay (val mIoU plateaus while train loss
+    keeps falling), so ``cosine`` anneals the LR to ~0 over training, which
+    lets late epochs refine instead of bounce. Returns None when unset.
+    """
+    name = training_config.get("scheduler")
+    if name in (None, "none", "constant"):
+        return None
+    if name == "cosine":
+        min_lr = float(training_config.get("min_learning_rate", 0.0))
+        return torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=epochs, eta_min=min_lr
+        )
+    raise ValueError(f"Unknown scheduler: {name}")
+
+
 def save_checkpoint(model, optimizer, epoch, metrics, path, config, best_miou):
+    # Re-ensure the target directory exists: on synced/scanned drives (OneDrive,
+    # antivirus) a folder created at startup can be moved out from under a long
+    # run, so guard every write rather than trusting the initial mkdir.
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     checkpoint = {
         "epoch": epoch,
         "model_state_dict": model.state_dict(),
@@ -134,9 +156,13 @@ def main():
         num_workers=training_config.get("num_workers", 0),
         pin_memory=device.type == "cuda",
     )
+    # Full-image evaluation yields variable-size tensors that cannot be stacked,
+    # so validate one image at a time; crop-mode eval can use the full batch.
+    eval_batch_size = 1 if dataset_config.get("eval_mode", "full") == "full" \
+        else training_config["batch_size"]
     val_loader = DataLoader(
         val_dataset,
-        batch_size=training_config["batch_size"],
+        batch_size=eval_batch_size,
         shuffle=False,
         num_workers=training_config.get("num_workers", 0),
         pin_memory=device.type == "cuda",
@@ -150,8 +176,11 @@ def main():
         checkpoint = torch.load(args.init_weights, map_location=device)
         load_model_weights(model, checkpoint)
         print(f"Warm-started from: {args.init_weights}")
-    criterion = build_loss(config)
+    # .to(device) moves any class-weight buffer (weighted CE/ce_dice) onto the
+    # same device as the model outputs.
+    criterion = build_loss(config).to(device)
     optimizer = build_optimizer(model, training_config)
+    scheduler = build_scheduler(optimizer, training_config, training_config["epochs"])
 
     mixed_precision = training_config.get("mix_precision", False)
     scaler = None
@@ -188,6 +217,10 @@ def main():
             ignore_index=ignore_index,
         )
 
+        current_lr = optimizer.param_groups[0]["lr"]
+        if scheduler is not None:
+            scheduler.step()
+
         val_loss = val_result["loss"]
         val_oa = val_result["OA"]
         val_miou = val_result["mIoU"]
@@ -201,6 +234,7 @@ def main():
 
         log_item = {
             "epoch": epoch,
+            "lr": current_lr,
             "train_loss": train_loss,
             "val_loss": val_loss,
             "val_OA": val_oa,
@@ -213,6 +247,7 @@ def main():
         logs.append(log_item)
 
         log_path = os.path.join(output_dir, "logs", "training_logs.json")
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
         with open(log_path, "w", encoding="utf-8") as f:
             json.dump(logs, f, indent=4)
 
