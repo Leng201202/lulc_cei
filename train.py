@@ -22,6 +22,7 @@ def create_output_dir(output_dir):
 
 
 def select_device():
+    # Select device for training: CUDA if available, otherwise MPS (Apple Silicon), otherwise CPU.
     if torch.cuda.is_available():
         return torch.device("cuda")
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
@@ -30,6 +31,7 @@ def select_device():
 
 
 def validate_config(config):
+    # it validate all experiment,dataset,model,training that need to present
     for section in ["experiment", "dataset", "model", "training"]:
         if section not in config:
             raise KeyError(f"Missing config section: {section}")
@@ -55,6 +57,7 @@ def validate_config(config):
 
 
 def build_optimizer(model, training_config):
+    # Build an optimizer from config. Currently supports Adam and AdamW. Raises ValueError for unknown optimizers.
     optimizer_name = training_config["optimizer"].lower()
     learning_rate = float(training_config["learning_rate"])
     weight_decay = float(training_config.get("weight_decay", 0.0) or 0.0)
@@ -81,6 +84,8 @@ def build_scheduler(optimizer, training_config, epochs):
     Longer runs overfit without LR decay (val mIoU plateaus while train loss
     keeps falling), so ``cosine`` anneals the LR to ~0 over training, which
     lets late epochs refine instead of bounce. Returns None when unset.
+
+    How should we change the learning speed during training?
     """
     name = training_config.get("scheduler")
     if name in (None, "none", "constant"):

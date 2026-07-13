@@ -3,8 +3,15 @@
 The normalization must match what the model weights were trained with:
 
 * ``imagenet`` -- ``(x/255 - mean) / std`` with ImageNet statistics. Correct
+
+    step 1: old_value / 255
+    step 2: (value - mean) / std
+    
   for models with an ImageNet-pretrained encoder trained in this project.
 * ``zero_one`` -- ``x / 255`` only, scaling to ``[0, 1]``. This is what the
+    0   -> 0.0
+    128 -> 0.5
+    255 -> 1.0
   external OpenEarthMap-SAR baseline weights expect; using ImageNet statistics
   with those weights produces incoherent predictions.
 """
