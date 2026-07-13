@@ -76,10 +76,11 @@ class OpenEarthMapDataset(Dataset):
         0–7 = land-cover classes
         """
         # Initialize every pixel as ignored so unexpected raw values are not
+        # Because the model output channels are indexed from zero:
         # accidentally treated as trainable classes.
         new_mask = np.full(mask.shape, self.ignore_index, dtype=np.uint8)
 
-        # Loss functions generally expect class IDs to start at zero.
+        # Loss functions generally expect class IDs to start at zero. and valid pixels is class-id 1-8 from dataset
         valid_pixels = (mask >= 1) & (mask <= 8)
         new_mask[valid_pixels] = mask[valid_pixels] - 1
 
