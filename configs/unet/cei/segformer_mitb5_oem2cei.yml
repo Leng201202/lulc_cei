@@ -1,0 +1,53 @@
+# Model 5: SegFormer + MiT-B5, trained on OpenEarthMap in the 7-class CEI scheme.
+#
+# SegFormer pairs a hierarchical Mix Transformer (MiT) encoder with an
+# all-MLP decoder -- no heavy decoder, no positional encoding, so it handles a
+# test resolution different from the training crop without any adjustment.
+# That is why this config needs no img_size, unlike the two Swin models.
+#
+# MiT-B5 (82M) sits in the same size class as the Swin models, keeping the
+# comparison across the five architectures reasonably matched.
+experiment:
+  name: cei_m5_segformer_mitb5
+  output_dir: ./experiments/cei_m5_segformer_mitb5
+dataset:
+  name: OpenEarthMap
+  root: data/OpenEarthMap/OpenEarthMap_wo_xBD
+  image_dir: <region>/images
+  mask_dir: <region>/labels
+  train_split: train_split_60.txt
+  val_split: val_split_10.txt
+  test_split: test_split_30.txt
+  label_map: oem_to_cei
+  image_size: 512
+  crop_size: 512
+  original_size: 1024
+  num_classes: 7
+  ignore_index: 255
+  normalization: imagenet
+  augment: false
+  eval_mode: full
+model:
+  name: segformer
+  encoder_name: mit_b5         # SegFormer's native Mix Transformer backbone
+  encoder_weights: imagenet
+  in_channels: 3
+  num_classes: 7
+training:
+  # Transformer recipe, matching the two Swin models so the five runs differ by
+  # architecture rather than by optimiser tuning within each family.
+  batch_size: 4
+  epochs: 200
+  learning_rate: 0.00006
+  optimizer: AdamW
+  weight_decay: 0.01
+  loss: cross_entropy
+  scheduler: none
+  mix_precision: true
+  num_workers: 4
+metrics:
+  - OA
+  - mIoU
+  - mF1
+  - per_class_IoU
+  - per_class_F1

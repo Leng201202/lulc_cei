@@ -1,6 +1,9 @@
 import segmentation_models_pytorch as smp
 import torch.nn as nn
 
+from src.models.ftunetformer import ft_unetformer
+from src.models.unetformer import UNetFormer
+
 
 class LeadingChannelDrop(nn.Module):
     """Adapt a model whose head has extra leading output channels.
@@ -44,6 +47,14 @@ def build_model(config):
     decoder_attention_type = model_config.get("decoder_attention_type")
     pretrained_classes = model_config.get("pretrained_classes")
 
+    # Extra keyword arguments forwarded to the timm encoder. Transformer
+    # backbones need this: Swin is built for a fixed 224x224 input and raises
+    # "Input height doesn't match model" at 512 unless img_size is overridden.
+    #
+    #   encoder_params:
+    #     img_size: 512
+    encoder_params = model_config.get("encoder_params") or {}
+
     if model_name in {"unet", "u-net"}:
         head_classes = pretrained_classes or num_classes
         model = smp.Unet(
@@ -52,6 +63,7 @@ def build_model(config):
             in_channels=in_channels,
             classes=head_classes,
             decoder_attention_type=decoder_attention_type,
+            **encoder_params,
         )
         if pretrained_classes is not None:
             model = LeadingChannelDrop(model, drop=pretrained_classes - num_classes)
@@ -63,6 +75,59 @@ def build_model(config):
             encoder_weights=encoder_weights,
             in_channels=in_channels,
             classes=num_classes,
+            **encoder_params,
         )
         return model
-    raise ValueError(f"Unknown model name: {model_name}")
+
+    if model_name in {"upernet", "upernet"}:
+        # UPerNet pairs a pyramid-pooling decoder with a hierarchical backbone.
+        # Use a "tu-" encoder name to pull any timm backbone, e.g.
+        # "tu-swin_base_patch4_window7_224.ms_in22k_ft_in1k" with
+        # encoder_params.img_size set to the training crop size.
+        model = smp.UPerNet(
+            encoder_name=encoder_name,
+            encoder_weights=encoder_weights,
+            in_channels=in_channels,
+            classes=num_classes,
+            **encoder_params,
+        )
+        return model
+
+    if model_name in {"unetformer", "unet-former"}:
+        # UNetFormer: any timm CNN encoder + the Global-Local Transformer Block
+        # decoder. encoder_name is passed straight to timm, e.g. "resnet101".
+        # In training mode this returns (main, aux) -- trainer.py handles it.
+        return UNetFormer(
+            backbone_name=encoder_name,
+            pretrained=encoder_weights is not None,
+            num_classes=num_classes,
+            decode_channels=model_config.get("decode_channels", 64),
+            dropout=model_config.get("dropout", 0.1),
+            window_size=model_config.get("window_size", 8),
+        )
+
+    if model_name in {"ftunetformer", "ft-unetformer", "ft_unetformer"}:
+        # FT-UNetFormer: Swin-B encoder + the same decoder family. encoder_name
+        # is ignored -- the Swin-B topology is fixed by the paper.
+        return ft_unetformer(
+            num_classes=num_classes,
+            pretrained=encoder_weights is not None,
+            decode_channels=model_config.get("decode_channels", 256),
+            freeze_stages=model_config.get("freeze_stages", -1),
+            window_size=model_config.get("window_size", 8),
+        )
+
+    if model_name == "segformer":
+        model = smp.Segformer(
+            encoder_name=encoder_name,
+            encoder_weights=encoder_weights,
+            in_channels=in_channels,
+            classes=num_classes,
+            **encoder_params,
+        )
+        return model
+
+    raise ValueError(
+        f"Unknown model name: {model_name}. Supported: unet, upernet, "
+        "unetformer, ftunetformer, segformer, deeplabv3."
+    )

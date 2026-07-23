@@ -53,6 +53,67 @@ def decode_mask(mask, ignore_index=255):
     return rgb
 
 
+def encode_mask(rgb, ignore_index=255):
+    """Inverse of :func:`decode_mask`: RGB ``[H, W, 3]`` -> class-index ``[H, W]``.
+
+    Every pixel is assigned the *nearest* palette color in RGB space, so a mask
+    that came back from an image editor still decodes cleanly even if a soft or
+    anti-aliased brush blended some pixels between two class colors.
+    ``IGNORE_COLOR`` maps to ``ignore_index`` (it is a valid "unlabeled" paint
+    color, not a class).
+
+    Returns ``(mask, exact_pixels, total_pixels)``. ``exact_pixels`` counts the
+    pixels that were already an exact palette color; a low ratio means the edit
+    was made with a soft brush and the snapping did real work, which the caller
+    can surface as a warning.
+    """
+    rgb = np.asarray(rgb)
+    if rgb.ndim != 3 or rgb.shape[2] != 3:
+        raise ValueError(f"Expected an [H, W, 3] RGB image, got shape {rgb.shape}.")
+
+    # Candidate paint colors: the 8 classes, plus the ignore color at the end.
+    palette = np.array([*OEM_CLASS_COLORS, IGNORE_COLOR], dtype=np.int16)
+    targets = np.array(
+        [*range(len(OEM_CLASS_COLORS)), ignore_index], dtype=np.uint8
+    )
+
+    # Editors leave only a handful of distinct colors behind, so resolve each
+    # unique color once instead of doing a nearest-neighbor search per pixel.
+    flat = rgb.reshape(-1, 3)
+    colors, inverse = np.unique(flat, axis=0, return_inverse=True)
+
+    # [num_colors, num_palette] squared distance, then pick the closest entry.
+    distances = ((colors[:, None, :].astype(np.int32) - palette[None, :, :]) ** 2).sum(axis=2)
+    nearest = distances.argmin(axis=1)
+
+    color_to_index = targets[nearest]
+    mask = color_to_index[inverse].reshape(rgb.shape[:2])
+
+    # A distance of 0 means the color was already exactly on-palette.
+    exact_colors = distances[np.arange(len(colors)), nearest] == 0
+    exact_pixels = int(np.bincount(inverse, minlength=len(colors))[exact_colors].sum())
+
+    return mask, exact_pixels, int(flat.shape[0])
+
+
+def save_gimp_palette(path):
+    """Write the OpenEarthMap palette as a GIMP ``.gpl`` file.
+
+    Importing this into GIMP (Windows > Dockable Dialogs > Palettes) lets you
+    pick class colors exactly, which is what keeps a corrected mask decodable
+    back to class indices without any color drift.
+    """
+    lines = ["GIMP Palette", "Name: OpenEarthMap", "Columns: 3", "#"]
+    for name, (r, g, b) in zip(OEM_CLASS_NAMES, OEM_CLASS_COLORS):
+        lines.append(f"{r:3d} {g:3d} {b:3d}\t{name}")
+    r, g, b = IGNORE_COLOR
+    lines.append(f"{r:3d} {g:3d} {b:3d}\tUnlabeled (ignore)")
+
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+    return path
+
+
 def denormalize_image(image, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)):
     """Reverse ImageNet normalization on a ``[C, H, W]`` tensor or ``[H, W, C]``
     array and return an ``uint8`` RGB image ``[H, W, 3]``."""

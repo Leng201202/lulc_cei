@@ -1,0 +1,43 @@
+# Model 1 evaluation: FT-UNetFormer + Swin-B, OEM-trained, tested on CEI.
+#
+#   python evaluate.py \
+#       --config configs/unet/cei/test/test_m1_ftunetformer_cei.yml \
+#       --checkpoint experiments/cei_m1_ftunetformer_swinb/checkpoints/best_checkpoint.pth \
+#       --split test --tta
+#
+# Only the keys evaluate.py actually reads are kept -- see
+# test_m2_uneteffb4_cei.yml for what was dropped and why.
+experiment:
+  name: cei_m1_ftunetformer_swinb
+  output_dir: ./experiments/cei_m1_ftunetformer_swinb    # fallback when --output is omitted
+dataset:
+  name: CEI
+  root: data/CEI_data
+  # CEI keeps images and masks in two flat folders (no <region> level); mask
+  # and image share the same filename:
+  #   images/maesuai_2.tif  ->  masks/maesuai_2.tif
+  image_dir: images
+  mask_dir: masks
+  # The CEI test set: tiles 1-100, all hand-labeled. Regenerate with
+  #   python tools/cei/make_test_split.py --start 1 --end 100
+  # Tiles 101-112 are labeled but deliberately left out of the test range.
+  # Note maesuai_1 and _5 are blank/nodata captures labeled 100% Water; they are
+  # included here by choice (--exclude-blank drops them).
+  test_split: test_split.txt
+  label_map: cei            # CEI ids 1-7 -> classes 0-6; on-disk 0 -> ignore
+  crop_size: 1024
+  num_classes: 7
+  ignore_index: 255
+  normalization: imagenet   # must match how the model was trained
+  eval_mode: full           # score the whole 1024x1024 tile, no cropping
+model:
+  name: ftunetformer
+  # encoder_name is unused -- FT-UNetFormer fixes the Swin-B topology.
+  encoder_name: swin_base_patch4_window7_224
+  decode_channels: 256
+  window_size: 8
+  in_channels: 3
+  num_classes: 7
+training:
+  loss: cross_entropy       # used to report test loss
+  num_workers: 4
