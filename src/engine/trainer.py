@@ -2,6 +2,21 @@ import torch
 from tqdm import tqdm
 
 
+def compute_loss(criterion, outputs, masks, aux_weight):
+    """Loss for one batch, allowing for deeply-supervised models.
+
+    UNetFormer returns ``(main, aux)`` while training -- an auxiliary head
+    supervised alongside the real output. Its loss is added at ``aux_weight``
+    (0.4 in the paper). Every other model returns a plain tensor and takes the
+    first branch.
+    """
+    if isinstance(outputs, (tuple, list)):
+        main_output, aux_output = outputs[0], outputs[1]
+        return criterion(main_output, masks) + aux_weight * criterion(aux_output, masks)
+
+    return criterion(outputs, masks)
+
+
 def train_one_epoch(
     model,
     dataloader,
@@ -10,6 +25,7 @@ def train_one_epoch(
     device,
     scaler=None,
     mixed_precision=False,
+    aux_weight=0.4,
 ):
     model.train()
 
@@ -40,7 +56,7 @@ def train_one_epoch(
                 dtype=torch.float16
             ):
                 outputs = model(images)
-                loss = criterion(outputs, masks)
+                loss = compute_loss(criterion, outputs, masks, aux_weight)
 
             scaler.scale(loss).backward()
             scaler.step(optimizer)
@@ -48,7 +64,7 @@ def train_one_epoch(
 
         else:
             outputs = model(images)
-            loss = criterion(outputs, masks)
+            loss = compute_loss(criterion, outputs, masks, aux_weight)
 
             loss.backward()
             optimizer.step()

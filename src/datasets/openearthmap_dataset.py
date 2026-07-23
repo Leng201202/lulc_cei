@@ -7,14 +7,24 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
 from src.datasets.transforms import build_normalize
+from src.datasets.taxonomy import build_label_lut
 
 
 class OpenEarthMapDataset(Dataset):
-    """Load OpenEarthMap image/mask pairs for semantic segmentation.
+    """Load region-structured image/mask pairs for semantic segmentation.
 
     The split file supplies image filenames. Each filename is used to infer its
     region, locate the corresponding image and label, and return an augmented
     image tensor together with a zero-based class-index mask.
+
+    The same loader serves OpenEarthMap and any dataset sharing its layout
+    (``<region>/images`` + ``<region>/labels``, ``.tif`` masks) -- for example
+    the CEI test set. Only the label encoding differs, selected by
+    ``dataset.label_map`` (see :func:`src.datasets.taxonomy.build_label_lut`):
+
+    * ``"oem"``        native OpenEarthMap 8-class training (default)
+    * ``"oem_to_cei"`` OEM imagery remapped into the 7-class CEI scheme
+    * ``"cei"``        native CEI labels (ids ``1-7``, ``0`` = ignore)
     """
 
     def __init__(self, config, split="train"):
@@ -29,8 +39,20 @@ class OpenEarthMapDataset(Dataset):
         self.image_dir = dataset_config["image_dir"]
         self.mask_dir = dataset_config["mask_dir"]
 
+        # Some datasets name the mask after the image but not identically --
+        # CEI stores "maesuai_1.tif" alongside the mask "maesuai_1_label.tif".
+        # Empty for OpenEarthMap, where image and mask share a filename.
+        self.mask_suffix = dataset_config.get("mask_suffix", "")
+
         self.crop_size = dataset_config["crop_size"]
         self.ignore_index = dataset_config["ignore_index"]
+
+        # How to translate the raw on-disk label values into training indices.
+        # Defaults to plain OpenEarthMap so existing configs keep working.
+        self.label_map = dataset_config.get("label_map", "oem")
+        self._label_lut, self._allowed_raw, self._num_label_classes = build_label_lut(
+            self.label_map, ignore_index=self.ignore_index
+        )
 
         # For example, split="train" selects dataset.train_split.
         split_file = dataset_config[f"{split}_split"]
@@ -46,7 +68,7 @@ class OpenEarthMapDataset(Dataset):
             file_names = [line.strip() for line in f.readlines() if line.strip()]
         return file_names
 
-    def _resolve_region_path(self, pattern, filename):
+    def _resolve_region_path(self, pattern, filename, suffix=""):
         """
         Your OpenEarthMap structure:
         data/OpenEarthMap/<region>/images/<filename>
@@ -58,33 +80,43 @@ class OpenEarthMapDataset(Dataset):
 
         pattern = <region>/images
         path = data/OpenEarthMap/aachen/images/aachen_1.tif
+
+        A pattern without "<region>" (e.g. CEI's flat "images"/"masks" folders)
+        is used as-is. ``suffix`` is inserted before the extension for datasets
+        whose labels are named after the image but not identically (e.g.
+        "tile_1.tif" -> "tile_1_label.tif"); empty for both OEM and CEI.
         """
         # Remove the image number to get the region name.
         # Example: santa_rosa_10.tif becomes santa_rosa.
         region = os.path.splitext(filename)[0].rsplit("_", 1)[0]
         folder = pattern.replace("<region>", region)
+
+        if suffix:
+            stem, extension = os.path.splitext(filename)
+            filename = f"{stem}{suffix}{extension}"
+
         return os.path.join(self.root, folder, filename)
 
-    def _convert_mask(self, mask):
+    def _convert_mask(self, mask, mask_path):
+        """Translate a raw on-disk mask into a training class-index mask.
+
+        The lookup table built from ``dataset.label_map`` maps each raw value to
+        its training index (or ``ignore_index`` for unlabeled/unmapped values),
+        so this both remaps classes and masks unlabeled pixels in one step.
+
+        Raw values outside the expected set (e.g. a corrupt mask, or an 8-class
+        OEM label loaded with the 7-class ``cei`` map) raise, so a mismatched
+        ``label_map`` fails loudly instead of silently discarding pixels.
         """
-        Raw OpenEarthMap mask values:
-        0 = ignore / unlabeled
-        1–8 = land-cover classes
+        unexpected = sorted(set(np.unique(mask).tolist()) - self._allowed_raw)
+        if unexpected:
+            raise ValueError(
+                f"Unexpected raw label values in {mask_path}: {unexpected}. "
+                f"label_map={self.label_map!r} allows raw values "
+                f"{sorted(self._allowed_raw)}."
+            )
 
-        Training mask values:
-        255 = ignore
-        0–7 = land-cover classes
-        """
-        # Initialize every pixel as ignored so unexpected raw values are not
-        # Because the model output channels are indexed from zero:
-        # accidentally treated as trainable classes.
-        new_mask = np.full(mask.shape, self.ignore_index, dtype=np.uint8)
-
-        # Loss functions generally expect class IDs to start at zero. and valid pixels is class-id 1-8 from dataset
-        valid_pixels = (mask >= 1) & (mask <= 8)
-        new_mask[valid_pixels] = mask[valid_pixels] - 1
-
-        return new_mask
+        return self._label_lut[mask]
 
     def _build_transform(self, split):
         """Build split-specific image and mask transformations."""
@@ -147,7 +179,9 @@ class OpenEarthMapDataset(Dataset):
         filename = self.file_names[index]
 
         image_path = self._resolve_region_path(self.image_dir, filename)
-        mask_path = self._resolve_region_path(self.mask_dir, filename)
+        mask_path = self._resolve_region_path(
+            self.mask_dir, filename, self.mask_suffix
+        )
 
         image = cv2.imread(image_path, cv2.IMREAD_COLOR)
         if image is None:
@@ -165,16 +199,9 @@ class OpenEarthMapDataset(Dataset):
         if mask.ndim == 3:
             mask = mask[:, :, 0]
 
-        mask = self._convert_mask(mask)
-
-        allowed_values = set(range(8)) | {self.ignore_index}
-        unique_values = set(np.unique(mask).tolist())
-        invalid_values = sorted(unique_values - allowed_values)
-        if invalid_values:
-            raise ValueError(
-                f"Invalid processed mask values in {mask_path}: {invalid_values}. "
-                f"Expected classes 0-7 or ignore index {self.ignore_index}."
-            )
+        # The LUT guarantees the output is in range, so validation happens on the
+        # raw values inside _convert_mask (which knows what label_map expects).
+        mask = self._convert_mask(mask, mask_path)
 
         # Pass image and mask together to keep random spatial transforms synced.
         transformed = self.transform(image=image, mask=mask)

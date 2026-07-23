@@ -162,6 +162,20 @@ def main():
         default=128,
         help="Tile overlap in pixels when --tile_size is set.",
     )
+    parser.add_argument(
+        "--format",
+        type=str,
+        choices=["png", "tiff"],
+        default="png",
+        help="File format for the saved mask. Use tiff for lossless masks you "
+             "intend to hand-correct in an image editor such as GIMP.",
+    )
+    parser.add_argument(
+        "--tta",
+        action="store_true",
+        help="Average predictions over horizontal/vertical flips (4-way TTA). "
+             "Slower, but usually a cleaner mask to start correcting from.",
+    )
     args = parser.parse_args()
 
     if args.tile_size is not None and args.overlap >= args.tile_size:
@@ -169,6 +183,7 @@ def main():
 
     # Imported lazily so the inference helpers above can be used (and tested)
     # without pulling in segmentation_models_pytorch.
+    from evaluate import FlipTTA
     from src.models.checkpoint import load_model_weights
     from src.models.model_factory import build_model
     from train import select_device, validate_config
@@ -188,6 +203,11 @@ def main():
     checkpoint = torch.load(args.checkpoint, map_location=device)
     load_model_weights(model, checkpoint)
     model.eval()
+
+    if args.tta:
+        # Wrap after loading weights: FlipTTA only averages logits, it holds none.
+        model = FlipTTA(model)
+        print("Test-time augmentation: 4-way flip enabled")
 
     output_dir = args.output
     if output_dir is None:
@@ -212,7 +232,8 @@ def main():
             prediction = predict_full(model, image, transform, device)
 
         stem = os.path.splitext(os.path.basename(image_path))[0]
-        mask_path = os.path.join(output_dir, f"{stem}_pred.png")
+        extension = "tif" if args.format == "tiff" else "png"
+        mask_path = os.path.join(output_dir, f"{stem}_pred.{extension}")
         save_mask(mask_path, prediction, ignore_index=ignore_index)
 
         if args.panel:

@@ -17,6 +17,7 @@ details, see [README.md](README.md).
 - [6. Fine-tune (warm start)](#6-fine-tune-warm-start)
 - [7. Diagnostic tools](#7-diagnostic-tools)
 - [8. Tests](#8-tests)
+- [9. Correct labels in GIMP (CEI workflow)](#9-correct-labels-in-gimp-cei-workflow)
 - [End-to-end recipes](#end-to-end-recipes)
 - [Troubleshooting](#troubleshooting)
 
@@ -62,6 +63,8 @@ or replace `\` with `` ` ``.
 | `python evaluate.py` | Evaluate a checkpoint on a split (writes metrics JSON) |
 | `python test.py` | Evaluate on the `test` split (shortcut) |
 | `python predict.py` | Run inference, save colorized masks / panels |
+| `python tools/cei/predict_for_gimp.py` | Predict CEI images into a GIMP-editable workspace |
+| `python tools/cei/import_from_gimp.py` | Turn GIMP-corrected masks into dataset labels |
 | `python tools/oem/check_dataset.py` | Visually sanity-check image/mask pairs |
 | `python tools/oem/check_missing_files.py` | Find/filter samples with missing files |
 | `python tools/oem/count_pixels.py` | Count raw mask values and percentages |
@@ -170,11 +173,18 @@ masks (and optional side-by-side panels).
 | `--panel` | no | off | Also save an input+prediction side-by-side panel per image |
 | `--tile_size` | no | none | Enable sliding-window inference with this tile size (pixels) |
 | `--overlap` | no | `128` | Tile overlap in pixels (only with `--tile_size`) |
+| `--format` | no | `png` | Mask file format: `png` or `tiff` |
+| `--tta` | no | off | Average predictions over 4-way flips (slower, cleaner mask) |
 
 Outputs per input image `<name>`:
 
-- `<name>_pred.png` - the colorized land-cover mask
+- `<name>_pred.png` - the colorized land-cover mask (`<name>_pred.tif` with `--format tiff`)
 - `<name>_panel.png` - input + prediction side by side (only with `--panel`)
+
+Use `--format tiff` when the mask is going to be hand-corrected in an image
+editor: TIFF is lossless, so the exact class colors survive the round trip. For a
+full correction workflow, use the CEI tools in [section 9](#9-correct-labels-in-gimp-cei-workflow)
+instead of calling `predict.py` directly.
 
 Full-image inference on a folder, with panels:
 
@@ -334,6 +344,112 @@ Takes no arguments.
 ```powershell
 python tests/smoke_test.py
 ```
+
+---
+
+## 9. Correct labels in GIMP (CEI workflow)
+
+The CEI images have no ground-truth labels. Rather than draw them from scratch,
+we let the trained model produce a *draft* label for each image, hand-correct the
+draft in GIMP, and keep the result as ground truth. Two scripts bracket the
+manual editing step.
+
+```text
+best checkpoint                                        corrected masks
+      |                                                       |
+      v                                                       v
+predict_for_gimp.py  -->  edit *_mask.tif in GIMP  -->  import_from_gimp.py
+      |                                                       |
+   review/ workspace                                  data/CEI_data/labels/
+   (mask.tif + image.png                              (*.png, raw codes 1-8,
+    + palette + instructions)                          ready for training)
+```
+
+### Step 1 - `tools/cei/predict_for_gimp.py`
+
+Predicts every CEI image and lays out a GIMP workspace.
+
+| Argument | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `--config` | yes | - | Path to the YAML config |
+| `--checkpoint` | yes | - | Trained weights (use your best run) |
+| `--input` | yes | - | A CEI image file **or** a directory of them |
+| `--output` | yes | - | Directory to create the workspace in |
+| `--tta` | no | off | 4-way flip TTA: a cleaner draft means less hand-correcting |
+| `--start-index` | no | none | Only tiles whose trailing number is >= this |
+| `--end-index` | no | none | Only tiles whose trailing number is <= this |
+| `--overwrite` | no | off | Re-predict tiles that already have a mask (destroys corrections) |
+| `--tile_size` / `--overlap` | no | none / `128` | Sliding-window inference (CEI tiles are 1024x1024 and do not need it) |
+
+Input images may be `.tif`, `.tiff`, `.png`, `.jpg`, or `.jpeg`.
+
+When you add a new batch of tiles to an existing workspace, select them by their
+trailing number so the earlier ones are left alone -- e.g. after adding
+`maesuai_85..112` to a folder that already had `1..84`:
+
+```powershell
+python tools/cei/predict_for_gimp.py --config configs/unet/oem/unet_effb4_oem_v2.yml --checkpoint experiments/exp_02_unet_effb4_oem_paper/checkpoints/best_checkpoint.pth --input data/CEI_data --output outputs/cei_maesuai/review --start-index 85 --tta
+```
+
+Tiles that already have a `_mask.tif` in the output folder are skipped anyway, so
+re-running the command is safe and never overwrites work you have corrected by
+hand. Pass `--overwrite` only when you deliberately want a fresh draft.
+
+```powershell
+python tools/cei/predict_for_gimp.py --config configs/unet/oem/unet_effb4_oem_v2.yml --checkpoint experiments/exp_02_unet_effb4_oem_paper/checkpoints/best_checkpoint.pth --input data/CEI_data --output outputs/cei_exp02/review --tta
+```
+
+This writes, per image `<name>`:
+
+- `<name>_mask.tif` - the draft mask, in the official class colors. **Edit this one.**
+- `<name>_image.png` - the aerial image, to open as a reference layer.
+- `_original/<name>.tif` - a pristine copy, used later to report what you changed.
+
+plus `oem_palette.gpl` (import into GIMP so the class colors are exact) and
+`HOW_TO_EDIT.md` (the click-by-click GIMP instructions).
+
+### Step 2 - edit in GIMP
+
+Follow `HOW_TO_EDIT.md` in the workspace. The short version:
+
+1. Import `oem_palette.gpl` once (**Windows > Dockable Dialogs > Palettes**,
+   right-click > **Import Palette...**).
+2. Open `<name>_mask.tif`, then **File > Open as Layers** the `<name>_image.png`
+   and drag it *below* the mask; lower the mask's opacity to ~60% to see through it.
+3. Paint corrections with the **Pencil** (`N`), not the Paintbrush - the pencil
+   has hard edges, the paintbrush anti-aliases and invents in-between colors.
+4. Restore opacity to 100% and **File > Export As...** back over the same `.tif`.
+
+Paint a region black ("Unlabeled") when you genuinely cannot tell what it is;
+those pixels are excluded from the loss rather than teaching the model a guess.
+
+### Step 3 - `tools/cei/import_from_gimp.py`
+
+Turns the corrected masks back into dataset labels.
+
+| Argument | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `--review` | yes | - | The workspace folder from step 1 |
+| `--output` | yes | - | Directory to write the label PNGs into |
+| `--preview` | no | off | Also save a colorized PNG of each imported label |
+
+```powershell
+python tools/cei/import_from_gimp.py --review outputs/cei_exp02/review --output data/CEI_data/labels --preview
+```
+
+Each pixel is snapped to the nearest class color (so an accidental anti-aliased
+edge still resolves to a real class) and written as a single-channel PNG in the
+**raw OpenEarthMap encoding**: classes `1-8`, unlabeled `0`. That is exactly what
+`OpenEarthMapDataset` reads - it remaps `1-8` down to training indices `0-7` and
+turns everything else into the ignore index.
+
+The script prints, per mask, how many pixels you corrected and the resulting
+class distribution. Two warnings are worth acting on:
+
+- **"only N% of pixels were exactly on-palette"** - the mask went through a lossy
+  format (JPEG) or was painted with a soft brush. Re-export as TIFF from GIMP.
+- **"size changed"** - the mask must stay the same size as its image. The mask is
+  skipped; undo the crop/scale in GIMP.
 
 ---
 

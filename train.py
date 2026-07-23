@@ -212,6 +212,8 @@ def main():
             device=device,
             scaler=scaler,
             mixed_precision=mixed_precision,
+            # Only used by deeply-supervised models such as UNetFormer.
+            aux_weight=float(training_config.get("aux_weight", 0.4)),
         )
         val_result = validate_one_epoch(
             model,

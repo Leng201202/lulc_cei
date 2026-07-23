@@ -1,0 +1,57 @@
+# Model 3: UNetFormer with a ResNet-101 encoder, trained on OpenEarthMap in the
+# 7-class CEI scheme.
+#
+# UNetFormer pairs a CNN encoder with the Global-Local Transformer Block decoder.
+# The paper uses ResNet-18; ResNet-101 is substituted here, loaded from timm with
+# ImageNet weights.
+#
+# This model is deeply supervised: while training it returns (main, aux) and the
+# trainer adds the auxiliary loss at training.aux_weight. In eval mode it returns
+# a single tensor, so evaluation and prediction are unaffected.
+experiment:
+  name: cei_m3_unetformer_r101
+  output_dir: ./experiments/cei_m3_unetformer_r101
+dataset:
+  name: OpenEarthMap
+  root: data/OpenEarthMap/OpenEarthMap_wo_xBD
+  image_dir: <region>/images
+  mask_dir: <region>/labels
+  train_split: train_split_60.txt
+  val_split: val_split_10.txt
+  test_split: test_split_30.txt
+  label_map: oem_to_cei
+  image_size: 512
+  crop_size: 512
+  original_size: 1024
+  num_classes: 7
+  ignore_index: 255
+  normalization: imagenet
+  augment: false
+  eval_mode: full
+model:
+  name: unetformer
+  encoder_name: resnet101      # passed straight to timm
+  encoder_weights: imagenet    # null trains the encoder from scratch
+  decode_channels: 64
+  window_size: 8
+  dropout: 0.1
+  in_channels: 3
+  num_classes: 7
+training:
+  # 43M params -- CNN-scale, so it takes the CNN batch size and learning rate.
+  batch_size: 8
+  epochs: 200
+  learning_rate: 0.0001
+  optimizer: AdamW
+  weight_decay: 0.000001
+  loss: cross_entropy
+  aux_weight: 0.4              # weight on the auxiliary head (paper value)
+  scheduler: none
+  mix_precision: true
+  num_workers: 4
+metrics:
+  - OA
+  - mIoU
+  - mF1
+  - per_class_IoU
+  - per_class_F1
