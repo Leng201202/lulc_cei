@@ -1,9 +1,6 @@
 # Model 3 evaluation: UNetFormer + ResNet-101, OEM-trained, tested on CEI.
 #
-#   python evaluate.py \
-#       --config configs/unet/cei/test/test_m3_unetformer_cei.yml \
-#       --checkpoint experiments/cei_m3_unetformer_r101/checkpoints/best_checkpoint.pth \
-#       --split test --tta
+#   python evaluate.py --config configs/cei_oem/test/test_m3_unetformer_cei.yml --checkpoint experiments/cei_m3_unetformer_r101/checkpoints/best_checkpoint.pth --split test --tta
 #
 # Only the keys evaluate.py actually reads are kept -- see
 # test_m2_uneteffb4_cei.yml for what was dropped and why.

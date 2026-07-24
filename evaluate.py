@@ -36,6 +36,50 @@ class FlipTTA(nn.Module):
         return (identity + horizontal + vertical + both) / 4.0
 
 
+def check_architecture_matches(config, checkpoint, checkpoint_path):
+    """Fail early and readably when the config and checkpoint disagree.
+
+    train.py stores the full config inside every checkpoint, so the architecture
+    that produced these weights is known. Comparing it here turns the most
+    common mistake -- pairing one model's test config with another model's
+    checkpoint -- into one clear line instead of several hundred lines of
+    missing/unexpected state_dict keys.
+
+    Checkpoints without a stored config (e.g. externally distributed weights)
+    are left alone; load_state_dict still validates them.
+    """
+    if not isinstance(checkpoint, dict):
+        return
+
+    saved_model = (checkpoint.get("config") or {}).get("model")
+    if not saved_model:
+        return
+
+    wanted = config["model"]
+    mismatches = [
+        (key, saved_model.get(key), wanted.get(key))
+        for key in ("name", "encoder_name", "num_classes")
+        if saved_model.get(key) is not None and saved_model.get(key) != wanted.get(key)
+    ]
+    if not mismatches:
+        return
+
+    lines = [
+        "Config and checkpoint describe different models.",
+        f"  checkpoint: {checkpoint_path}",
+        "",
+        f"  {'field':<14} {'checkpoint':<32} {'this config':<32}",
+    ]
+    for key, saved, wanted_value in mismatches:
+        lines.append(f"  {key:<14} {str(saved):<32} {str(wanted_value):<32}")
+    lines += [
+        "",
+        "Use the test config matching the checkpoint's architecture, or point",
+        "--checkpoint at the run that used this config.",
+    ]
+    raise SystemExit("\n".join(lines))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, required=True)
@@ -83,6 +127,7 @@ def main():
 
     model = build_model(config).to(device)
     checkpoint = torch.load(args.checkpoint, map_location=device)
+    check_architecture_matches(config, checkpoint, args.checkpoint)
     load_model_weights(model, checkpoint)
 
     if args.tta:

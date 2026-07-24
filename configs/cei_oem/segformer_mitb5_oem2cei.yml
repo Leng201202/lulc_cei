@@ -37,7 +37,7 @@ training:
   # Transformer recipe, matching the two Swin models so the five runs differ by
   # architecture rather than by optimiser tuning within each family.
   batch_size: 4
-  epochs: 200
+  epochs: 100
   learning_rate: 0.00006
   optimizer: AdamW
   weight_decay: 0.01

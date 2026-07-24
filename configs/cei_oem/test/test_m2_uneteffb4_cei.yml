@@ -1,8 +1,6 @@
 # Model 2 evaluation: U-Net + EfficientNet-B4, OEM-trained, tested on CEI.
 #
-#   python evaluate.py --config configs/unet/cei/test/test_m2_uneteffb4_cei.yml \
-#       --checkpoint experiments/cei_exp01_oem2cei/checkpoints/best_checkpoint.pth \
-#       --split test --tta
+#   python evaluate.py --config configs/cei_oem/test/test_m2_uneteffb4_cei.yml --checkpoint experiments/cei_exp01_oem2cei/checkpoints/best_checkpoint.pth --split test --tta
 #
 # Only the keys evaluate.py actually reads are kept. Notably absent:
 #   model.encoder_weights  -- evaluate.py forces it to None; the checkpoint

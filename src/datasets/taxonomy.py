@@ -66,6 +66,40 @@ CEI_IGNORE_COLOR = (0, 0, 0)
 OEM_TO_CEI = [6, 0, 6, 5, 2, 3, 1, 4]
 
 
+# --- IRSAMap -> CEI class mapping ---------------------------------------------
+# IRSAMap encodes labels as two-digit codes: tens digit = major class, ones digit
+# = subclass. Decoded by intersecting SegLabel_vwsbr with the per-class
+# label_<class> folders and confirming on sampled imagery:
+#
+#   10 cropland      11 forest        12 grass/sparse
+#   21-24 water (four subtypes)
+#   31 building      32 road          34 sport
+#
+# Background (0) is NOT a generic "unlabeled" class the way OEM's 0 is. IRSAMap
+# annotates five thematic classes and leaves everything else -- bare soil,
+# concrete, parking lots, construction ground -- as 0. Measured over 300 tiles,
+# background is 23.6% of all pixels and 85.7% of it is real ground.
+#
+# Sending it to ignore would leave Non-vegetated with only sport: 0.21% of IRSA
+# pixels against 8.26% in the CEI test set, a 39x under-representation that
+# trains a model which never predicts the class. Mapping it to Non-vegetated
+# gives 21.09% -- over-represented 2.6x, but the right side of the error.
+#
+# The remaining 14.3% of background is near-black nodata (image borders). It
+# cannot be separated by mask value, so the dataset applies an image-based rule;
+# see ``nodata_to_ignore`` in openearthmap_dataset.py.
+IRSA_TO_CEI = {
+    0: 6,                          # background / bareland -> Non-vegetated
+    10: 1,                         # cropland              -> Agriculture
+    11: 2,                         # forest                -> Tree
+    12: 0,                         # grass / sparse        -> Rangeland
+    21: 3, 22: 3, 23: 3, 24: 3,    # all water subtypes    -> Water
+    31: 4,                         # building              -> Building
+    32: 5,                         # road                  -> Road
+    34: 6,                         # sport surfaces        -> Non-vegetated
+}
+
+
 def build_label_lut(label_map, ignore_index=255):
     """Return a 256-entry uint8 lookup table: raw on-disk value -> internal index.
 
@@ -73,9 +107,14 @@ def build_label_lut(label_map, ignore_index=255):
     sent to ``ignore_index``, so a single ``lut[mask]`` both remaps and masks in
     one vectorized step. ``label_map`` selects the scheme:
 
-    * ``"oem"``        raw ``1-8`` -> ``0-7``           (native OEM training)
-    * ``"oem_to_cei"`` raw ``1-8`` -> CEI ``0-6``       (OEM labels, CEI scheme)
-    * ``"cei"``        raw ``1-7`` -> ``0-6``           (native CEI labels)
+    * ``"oem"``         raw ``1-8`` -> ``0-7``          (native OEM training)
+    * ``"oem_to_cei"``  raw ``1-8`` -> CEI ``0-6``      (OEM labels, CEI scheme)
+    * ``"cei"``         raw ``1-7`` -> ``0-6``          (native CEI labels)
+    * ``"irsa_to_cei"`` IRSA codes  -> CEI ``0-6``      (IRSA labels, CEI scheme)
+
+    Note ``irsa_to_cei`` is the one scheme that maps raw ``0`` to a real class
+    rather than to ignore: IRSAMap leaves bareland unannotated, so its background
+    is mostly Non-vegetated ground. See ``IRSA_TO_CEI`` for the measurements.
     """
     import numpy as np
 
@@ -83,13 +122,14 @@ def build_label_lut(label_map, ignore_index=255):
         pairs = {raw: raw - 1 for raw in range(1, 9)}
     elif label_map == "oem_to_cei":
         pairs = {raw: OEM_TO_CEI[raw - 1] for raw in range(1, 9)}
-        # if irsa write under this for config or rule of class.
     elif label_map == "cei":
         pairs = {raw: raw - 1 for raw in range(1, 8)}
+    elif label_map == "irsa_to_cei":
+        pairs = dict(IRSA_TO_CEI)
     else:
         raise ValueError(
-            f"Unknown dataset.label_map: {label_map!r}. "
-            f"Expected one of 'oem', 'oem_to_cei', 'cei'."
+            f"Unknown dataset.label_map: {label_map!r}. Expected one of "
+            f"'oem', 'oem_to_cei', 'cei', 'irsa_to_cei'."
         )
 
     lut = np.full(256, ignore_index, dtype=np.uint8)

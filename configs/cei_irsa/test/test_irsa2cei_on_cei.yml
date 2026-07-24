@@ -1,0 +1,32 @@
+# Cross-dataset test: an IRSA-trained model scored on the 100 CEI tiles.
+#
+#   python evaluate.py --config configs/cei_irsa/test/test_irsa2cei_on_cei.yml --checkpoint experiments/cei_irsa01_irsa2cei/checkpoints/best_checkpoint.pth --split test --tta
+#
+# This is the number that matters: it sits alongside the OEM-trained result on
+# the same 100 tiles, so the two training sources are directly comparable.
+#
+# Only the keys evaluate.py actually reads are kept -- see
+# configs/cei_oem/test/test_m2_uneteffb4_cei.yml for what was dropped and why.
+experiment:
+  name: cei_irsa01_irsa2cei
+  output_dir: ./experiments/cei_irsa01_irsa2cei    # fallback when --output is omitted
+dataset:
+  name: CEI
+  root: data/CEI_data
+  image_dir: images
+  mask_dir: masks
+  test_split: test_split.txt
+  label_map: cei            # CEI ids 1-7 -> classes 0-6; on-disk 0 -> ignore
+  crop_size: 1024
+  num_classes: 7
+  ignore_index: 255
+  normalization: imagenet   # must match how the model was trained
+  eval_mode: full
+model:
+  name: unet
+  encoder_name: efficientnet-b4
+  in_channels: 3
+  num_classes: 7
+training:
+  loss: cross_entropy
+  num_workers: 4

@@ -1,0 +1,33 @@
+# In-domain test: an IRSA-trained model scored on IRSA's own 912-tile test split.
+#
+#   python evaluate.py --config configs/cei_irsa/test/test_irsa2cei_on_irsa.yml --checkpoint experiments/cei_irsa01_irsa2cei/checkpoints/best_checkpoint.pth --split test --tta
+#
+# The gap between this and test_irsa2cei_on_cei.yml is the cross-dataset
+# generalisation cost, the same way OEM test vs CEI test is for the OEM models.
+#
+# Note the image/mask dirs point at test/ rather than train/ -- IRSA keeps its
+# splits in separate directory trees, so the test split needs its own config.
+experiment:
+  name: cei_irsa01_irsa2cei
+  output_dir: ./experiments/cei_irsa01_irsa2cei
+dataset:
+  name: IRSA_Map
+  root: data/IRSAMap
+  image_dir: test/image
+  mask_dir: test/SegLabel_vwsbr
+  test_split: test_split.txt
+  label_map: irsa_to_cei
+  nodata_to_ignore: 8       # must match training, or the classes shift
+  crop_size: 1024
+  num_classes: 7
+  ignore_index: 255
+  normalization: imagenet
+  eval_mode: full
+model:
+  name: unet
+  encoder_name: efficientnet-b4
+  in_channels: 3
+  num_classes: 7
+training:
+  loss: cross_entropy
+  num_workers: 4

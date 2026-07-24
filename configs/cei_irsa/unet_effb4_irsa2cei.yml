@@ -1,0 +1,61 @@
+# Train on IRSAMap, remapped into the 7-class CEI scheme.
+#
+# The IRSA counterpart of configs/cei_oem/unet_effb4_oem2cei.yml. Same model,
+# same recipe, same 7 classes -- only the training data differs, so the two are
+# directly comparable on the shared CEI test set.
+#
+# Regenerate the splits with:
+#   python tools/irsa/make_splits.py --stratify
+experiment:
+  name: cei_irsa01_irsa2cei
+  output_dir: ./experiments/cei_irsa01_irsa2cei
+dataset:
+  name: IRSA_Map
+  root: data/IRSAMap
+  # IRSA uses flat folders with no <region> level, so these patterns are used
+  # as-is. train and val both come from train/; the test split lives in test/
+  # and is covered by its own config.
+  image_dir: train/image
+  # vwsbr = vege, water, sport, building, road burn order, so road wins where it
+  # overlaps building. The rvwsb folder reverses that. They are not copies:
+  # 169 of 200 sampled tiles differ.
+  mask_dir: train/SegLabel_vwsbr
+  train_split: train_split.txt
+  val_split: val_split.txt
+  label_map: irsa_to_cei
+  # IRSA leaves bareland unannotated, so background (code 0) is real
+  # Non-vegetated ground rather than "unlabeled" -- see src/datasets/taxonomy.py.
+  # But ~14% of that background is the near-black border padding of the source
+  # imagery, which is not ground. Pixels at or below this brightness are sent to
+  # ignore instead. Set to null to disable.
+  nodata_to_ignore: 8
+  image_size: 512
+  crop_size: 512
+  original_size: 1024
+  num_classes: 7
+  ignore_index: 255
+  normalization: imagenet
+  augment: false
+  eval_mode: full
+model:
+  name: unet
+  encoder_name: efficientnet-b4
+  encoder_weights: imagenet
+  in_channels: 3
+  num_classes: 7
+training:
+  batch_size: 8
+  epochs: 200
+  learning_rate: 0.0001
+  optimizer: AdamW
+  weight_decay: 0.000001
+  loss: cross_entropy
+  scheduler: none
+  mix_precision: true
+  num_workers: 4
+metrics:
+  - OA
+  - mIoU
+  - mF1
+  - per_class_IoU
+  - per_class_F1

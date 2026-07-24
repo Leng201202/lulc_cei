@@ -41,7 +41,7 @@ model:
 training:
   # ~96M params, so the batch matches the other transformer model.
   batch_size: 4
-  epochs: 200
+  epochs: 100
   learning_rate: 0.00006
   optimizer: AdamW
   weight_decay: 0.01

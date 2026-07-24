@@ -47,6 +47,12 @@ class OpenEarthMapDataset(Dataset):
         self.crop_size = dataset_config["crop_size"]
         self.ignore_index = dataset_config["ignore_index"]
 
+        # Brightness at or below which a pixel counts as nodata (image border
+        # padding) rather than real ground. Only meaningful for datasets whose
+        # background maps to a real class -- IRSAMap. Unset for OEM and CEI, so
+        # their behaviour is unchanged.
+        self.nodata_to_ignore = dataset_config.get("nodata_to_ignore")
+
         # How to translate the raw on-disk label values into training indices.
         # Defaults to plain OpenEarthMap so existing configs keep working.
         self.label_map = dataset_config.get("label_map", "oem")
@@ -97,7 +103,7 @@ class OpenEarthMapDataset(Dataset):
 
         return os.path.join(self.root, folder, filename)
 
-    def _convert_mask(self, mask, mask_path):
+    def _convert_mask(self, mask, mask_path, image=None):
         """Translate a raw on-disk mask into a training class-index mask.
 
         The lookup table built from ``dataset.label_map`` maps each raw value to
@@ -107,6 +113,8 @@ class OpenEarthMapDataset(Dataset):
         Raw values outside the expected set (e.g. a corrupt mask, or an 8-class
         OEM label loaded with the 7-class ``cei`` map) raise, so a mismatched
         ``label_map`` fails loudly instead of silently discarding pixels.
+
+        ``image`` is only needed when ``nodata_to_ignore`` is set; see below.
         """
         unexpected = sorted(set(np.unique(mask).tolist()) - self._allowed_raw)
         if unexpected:
@@ -116,7 +124,25 @@ class OpenEarthMapDataset(Dataset):
                 f"{sorted(self._allowed_raw)}."
             )
 
-        return self._label_lut[mask]
+        converted = self._label_lut[mask]
+
+        # IRSAMap needs this; OEM and CEI leave nodata_to_ignore unset and skip it.
+        #
+        # IRSA's background code 0 maps to Non-vegetated because the annotators
+        # left bareland unlabeled. But ~14% of that background is the near-black
+        # border padding of the source imagery, which is not ground at all. Both
+        # carry the same mask value, so the only way to tell them apart is to
+        # look at the pixels: a black image pixel under background is nodata.
+        #
+        # Without this, a model learns "black region -> Non-vegetated" and then
+        # confidently mislabels the blank CEI captures (maesuai_1, maesuai_5).
+        if self.nodata_to_ignore is not None and image is not None:
+            nodata = image.max(axis=2) <= self.nodata_to_ignore
+            converted = np.where(nodata, self.ignore_index, converted).astype(
+                converted.dtype
+            )
+
+        return converted
 
     def _build_transform(self, split):
         """Build split-specific image and mask transformations."""
@@ -201,7 +227,9 @@ class OpenEarthMapDataset(Dataset):
 
         # The LUT guarantees the output is in range, so validation happens on the
         # raw values inside _convert_mask (which knows what label_map expects).
-        mask = self._convert_mask(mask, mask_path)
+        # The image goes along too, so nodata_to_ignore can tell real background
+        # apart from black border padding.
+        mask = self._convert_mask(mask, mask_path, image=image)
 
         # Pass image and mask together to keep random spatial transforms synced.
         transformed = self.transform(image=image, mask=mask)

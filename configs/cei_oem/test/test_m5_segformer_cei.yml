@@ -1,9 +1,6 @@
 # Model 5 evaluation: SegFormer + MiT-B5, OEM-trained, tested on CEI.
 #
-#   python evaluate.py \
-#       --config configs/unet/cei/test/test_m5_segformer_cei.yml \
-#       --checkpoint experiments/cei_m5_segformer_mitb5/checkpoints/best_checkpoint.pth \
-#       --split test --tta
+#   python evaluate.py --config configs/cei_oem/test/test_m5_segformer_cei.yml --checkpoint experiments/cei_m5_segformer_mitb5/checkpoints/best_checkpoint.pth --split test --tta
 #
 # Only the keys evaluate.py actually reads are kept -- see
 # test_m2_uneteffb4_cei.yml for what was dropped and why.
