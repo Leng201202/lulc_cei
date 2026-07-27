@@ -45,7 +45,7 @@ model:
   num_classes: 7
 training:
   batch_size: 8
-  epochs: 200
+  epochs: 100
   learning_rate: 0.0001
   optimizer: AdamW
   weight_decay: 0.000001

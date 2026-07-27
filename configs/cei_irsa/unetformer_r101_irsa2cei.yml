@@ -49,7 +49,7 @@ model:
 training:
   # 43M params -- CNN-scale, so it takes the CNN batch size and learning rate.
   batch_size: 8
-  epochs: 200
+  epochs: 100
   learning_rate: 0.0001
   optimizer: AdamW
   weight_decay: 0.000001
