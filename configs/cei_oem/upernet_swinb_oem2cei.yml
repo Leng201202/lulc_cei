@@ -3,9 +3,14 @@
 # Same data, same recipe, same 7 classes as unet_effb4_oem2cei.yml -- only the
 # architecture differs, so the two are directly comparable.
 #
-# Swin is built for a fixed 224x224 input and raises "Input height doesn't match
-# model" at 512 unless encoder_params.img_size is set to the crop size. If you
-# change dataset.crop_size, change encoder_params.img_size to match.
+# Swin needs a FIXED input size (encoder_params.img_size below). Classic windowed
+# Swin-B asserts on the exact size and ignores timm's dynamic_img_size flag, so
+# training (512 crops) and full-image validation (1024 tiles) cannot share one
+# model. Hence eval_mode: crop -- validation centre-crops to 512 to match the
+# encoder. The final full-1024 score comes from test/test_m4_upernet_cei.yml,
+# which builds a fresh img_size:1024 model and loads these weights unchanged
+# (Swin weights are resolution-independent). So only checkpoint selection uses
+# 512 crops; the reported test metric is still full-image like the other models.
 experiment:
   name: cei_m4_upernet_swinb
   output_dir: ./experiments/cei_m4_upernet_swinb
@@ -25,22 +30,22 @@ dataset:
   ignore_index: 255
   normalization: imagenet
   augment: false
-  eval_mode: full
+  eval_mode: crop     # 512 centre-crop at validation; Swin can't take full 1024
 model:
   name: upernet
   # "tu-" pulls the backbone from timm. This is Swin-B pretrained on ImageNet-22k
   # and fine-tuned on 1k -- the strongest of the three available Swin-B weights.
-  encoder_name: tu-swin_base_patch4_window7_224.ms_in22k_ft_in1k
+  encoder_name: tu-swin_base_patch4_window7_224
   encoder_weights: imagenet
   encoder_params:
     img_size: 512     # must equal dataset.crop_size
-  in_channels: 3
+  in_channels: 3 
   num_classes: 7
 training:
   # Swin-B is ~97M params vs EfficientNet-B4's ~20M, so the batch is halved to
   # fit alongside full-image validation. Transformers also prefer a lower LR.
   batch_size: 4
-  epochs: 200
+  epochs: 100
   learning_rate: 0.00006
   optimizer: AdamW
   weight_decay: 0.01
