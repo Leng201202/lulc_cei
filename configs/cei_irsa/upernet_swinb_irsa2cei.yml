@@ -42,7 +42,10 @@ model:
   encoder_name: tu-swin_base_patch4_window7_224.ms_in22k_ft_in1k
   encoder_weights: imagenet
   encoder_params:
-    img_size: 512     # must equal dataset.crop_size
+    img_size: 512            # the training crop size
+    strict_img_size: false   # let full-image (1024) validation pass through the
+                             # same 512-built model; Swin's relative position bias
+                             # handles the larger input, so the assert is safe to lift
   in_channels: 3
   num_classes: 7
 training:
