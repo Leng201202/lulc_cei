@@ -34,7 +34,12 @@ dataset:
   ignore_index: 255
   normalization: imagenet
   augment: false
-  eval_mode: full
+  # crop (not full) for validation: Swin's timm patch_embed hard-asserts the
+  # input size equals img_size (512), so full-image 1024 validation crashes.
+  # Center-cropping validation to 512 matches the encoder and works on every
+  # timm version. Final scoring still uses full 1024 tiles via the test configs
+  # (which build the encoder at img_size 1024).
+  eval_mode: crop
 model:
   name: upernet
   # "tu-" pulls the backbone from timm. This is Swin-B pretrained on ImageNet-22k
@@ -42,10 +47,7 @@ model:
   encoder_name: tu-swin_base_patch4_window7_224.ms_in22k_ft_in1k
   encoder_weights: imagenet
   encoder_params:
-    img_size: 512            # the training crop size
-    strict_img_size: false   # let full-image (1024) validation pass through the
-                             # same 512-built model; Swin's relative position bias
-                             # handles the larger input, so the assert is safe to lift
+    img_size: 512     # must equal dataset.crop_size and the eval crop size
   in_channels: 3
   num_classes: 7
 training:
