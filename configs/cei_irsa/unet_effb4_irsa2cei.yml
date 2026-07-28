@@ -52,7 +52,11 @@ training:
   loss: cross_entropy
   scheduler: none
   mix_precision: true
-  num_workers: 4
+  # 0 = load data in the main process. On Windows, num_workers > 0 makes each
+  # worker re-import torch and load its CUDA DLLs; across workers this eats a lot
+  # of committed memory and, on a memory-tight box, the run runs out of RAM /
+  # paging file during validation. 0 keeps the footprint small.
+  num_workers: 0
 metrics:
   - OA
   - mIoU
