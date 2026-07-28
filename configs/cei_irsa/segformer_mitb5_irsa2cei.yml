@@ -1,50 +1,64 @@
-# โมเดล 5: SegFormer + MiT-B5 เทรนบน IRSAMap แล้ว remap เป็น 7 คลาส CEI
-# คู่แฝดของ configs/cei_oem/segformer_mitb5_oem2cei.yml (โมเดล/สูตรเหมือนกัน ต่างแค่ข้อมูล)
-# SegFormer = encoder Mix-Transformer + decoder MLP ล้วน ไม่มี positional encoding
-# จึงรับภาพเทสต์ขนาดต่างจากตอนเทรนได้เลย (ไม่ต้องตั้ง img_size)
-# สร้างไฟล์ split ด้วย:  python tools/irsa/make_splits.py --stratify
-
+# Model 5: SegFormer + MiT-B5, trained on IRSAMap in the 7-class CEI scheme.
+#
+# The IRSA counterpart of configs/cei_oem/segformer_mitb5_oem2cei.yml. Same model
+# and recipe -- only the training data differs, so the two are directly
+# comparable on the shared CEI test set.
+#
+# SegFormer pairs a hierarchical Mix Transformer (MiT) encoder with an all-MLP
+# decoder -- no positional encoding, so it handles a test resolution different
+# from the training crop without any adjustment (no img_size needed).
+#
+# Regenerate the splits with:
+#   python tools/irsa/make_splits.py --stratify
 experiment:
-  name: cei_irsa_m5_segformer_mitb5                      # ชื่อการทดลอง (ตั้งชื่อโฟลเดอร์ผล)
-  output_dir: ./experiments/cei_irsa_m5_segformer_mitb5  # โฟลเดอร์เก็บ checkpoint + log
+  name: cei_irsa_m5_segformer_mitb5
+  output_dir: ./experiments/cei_irsa_m5_segformer_mitb5
 dataset:
-  name: IRSA_Map                 # เลือกตัวโหลดข้อมูลของ IRSA
-  root: data/IRSAMap             # โฟลเดอร์หลักของข้อมูล
-  image_dir: train/image         # โฟลเดอร์รูปภาพสำหรับเทรน
-  mask_dir: train/SegLabel_vwsbr # โฟลเดอร์ label(mask) — vwsbr = ถนนทับอาคาร
-  train_split: train_split.txt   # ไฟล์รายชื่อ tile ที่ใช้เทรน
-  val_split: val_split.txt       # ไฟล์รายชื่อ tile ที่ใช้ validate
-  label_map: irsa_to_cei         # แปลงรหัสคลาสของ IRSA -> 7 คลาส CEI
-  nodata_to_ignore: 8            # pixel มืด <=8 = ขอบดำ ให้ข้าม
-  image_size: 512                # ขนาดภาพที่ใช้
-  crop_size: 512                 # ขนาดที่สุ่มครอปตอนเทรน
-  original_size: 1024            # ขนาดจริงของ tile ต้นฉบับ
-  num_classes: 7                 # จำนวนคลาส (ต้องตรงกับ model)
-  ignore_index: 255              # ค่าที่ให้โมเดลข้าม ไม่คิด loss
-  normalization: imagenet        # วิธี normalize ภาพ
-  augment: false                 # ปิด data augmentation
-  eval_mode: full                # ประเมินบนภาพเต็ม (pad ให้หาร 32 ลงตัว)
+  name: IRSA_Map
+  root: data/IRSAMap
+  # IRSA uses flat folders with no <region> level. train and val both come from
+  # train/; the test split lives in test/ and is covered by its own config.
+  image_dir: train/image
+  mask_dir: train/SegLabel_vwsbr
+  train_split: train_split.txt
+  val_split: val_split.txt
+  label_map: irsa_to_cei
+  # IRSA leaves bareland unannotated, so background (code 0) is real Non-vegetated
+  # ground rather than "unlabeled". But ~14% of it is near-black border padding;
+  # pixels at or below this brightness are sent to ignore. Set null to disable.
+  nodata_to_ignore: 8
+  image_size: 512
+  crop_size: 512
+  original_size: 1024
+  num_classes: 7
+  ignore_index: 255
+  normalization: imagenet
+  augment: false
+  eval_mode: full
 model:
-  name: segformer                # สถาปัตยกรรม: SegFormer
-  encoder_name: mit_b5           # backbone = Mix-Transformer B5 (ตัวประจำของ SegFormer)
-  encoder_weights: imagenet      # โหลด weight pretrained มาเริ่ม
-  in_channels: 3                 # ภาพ RGB 3 ช่อง
-  num_classes: 7                 # output 7 คลาส
+  name: segformer
+  encoder_name: mit_b5         # SegFormer's native Mix Transformer backbone
+  encoder_weights: imagenet
+  in_channels: 3
+  num_classes: 7
 training:
-  batch_size: 4                  # จำนวนภาพต่อรอบ (โมเดลใหญ่ ลดเหลือ 4)
-  epochs: 100                    # จำนวนรอบเทรนทั้งหมด
-  learning_rate: 0.00006         # อัตราการเรียนรู้ (transformer ชอบค่าต่ำ)
-  optimizer: AdamW               # อัลกอริทึมปรับ weight
-  weight_decay: 0.01             # ค่าลงโทษ weight กัน overfit (สูตร transformer)
-  loss: cross_entropy            # ฟังก์ชัน loss
-  scheduler: none                # ไม่ปรับ learning rate ระหว่างเทรน
-  mix_precision: true            # ใช้ half-precision (เฉพาะบน CUDA)
-  num_workers: 0                 # 0 = โหลดข้อมูลใน process หลัก (ไม่ spawn worker)
-                                 # บน Windows ถ้า >0 แต่ละ worker จะโหลด torch DLL ซ้ำ
-                                 # จน paging file ไม่พอ -> WinError 1455 ตั้ง 0 กันปัญหานี้
-metrics:                         # ตัวชี้วัดที่รายงาน
-  - OA                           # Overall Accuracy
-  - mIoU                         # mean IoU (ตัวหลักเลือก best checkpoint)
-  - mF1                          # mean F1
-  - per_class_IoU                # IoU แยกรายคลาส
-  - per_class_F1                 # F1 แยกรายคลาส
+  # Transformer recipe, matching the two Swin models so the runs differ by
+  # architecture rather than by optimiser tuning within each family.
+  batch_size: 4
+  epochs: 100
+  learning_rate: 0.00006
+  optimizer: AdamW
+  weight_decay: 0.01
+  loss: cross_entropy
+  scheduler: none
+  mix_precision: true
+  # 0 = load data in the main process. On Windows, num_workers > 0 makes each
+  # worker re-import torch and load its CUDA DLLs; across workers this exhausts
+  # the paging file and crashes with WinError 1455. 0 avoids the spawned workers.
+  num_workers: 0
+metrics:
+  - OA
+  - mIoU
+  - mF1
+  - per_class_IoU
+  - per_class_F1
