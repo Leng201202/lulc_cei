@@ -28,7 +28,7 @@ import sys
 import time
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SMOKE_DIR = os.path.join("configs", "unet", "cei", "smoke")
+SMOKE_DIR = os.path.join("configs", "cei_oem", "smoke")
 
 # (key, label, train config, test config, experiment name)
 MODELS = [
