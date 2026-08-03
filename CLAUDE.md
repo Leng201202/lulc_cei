@@ -116,5 +116,10 @@ predict_for_gimp.py → (edit *_mask.tif in GIMP) → import_from_gimp.py → da
 ## Known inconsistencies (current as of this file, verify before trusting)
 
 - `README.md`'s repository-structure tree, its `configs/unet/unet_effb4_oem.yml`-style paths, and its "OpenEarthMap only, IRSA/LoveDA reserved" framing are stale. Configs actually live under `configs/oem/`, `configs/cei_oem/`, `configs/cei_irsa/`; `IRSA_Map` is implemented (`src/datasets/irsa_dataset.py`); the model factory supports 5 architectures, not just U-Net/DeepLabV3.
-- `tools/cei/make_smoke_configs.py` and `tools/cei/run_smoke_tests.py` hard-code `CONFIG_DIR = configs/unet/cei`, a path that no longer exists (renamed to `configs/cei_oem` in commit `3180f2e`). **These two scripts are currently broken** until `CONFIG_DIR` (and `SMOKE_DIR` in `run_smoke_tests.py`) are updated to `configs/cei_oem`.
+- Config layout: OEM->CEI training/eval configs live under `configs/cei_oem/`
+  (train configs at the top level, per-model CEI test configs under
+  `configs/cei_oem/test/`, smoke configs under `configs/cei_oem/smoke/`).
+  IRSA->CEI configs mirror this under `configs/cei_irsa/`. The old
+  `configs/unet/cei/` path is gone; `tools/cei/make_smoke_configs.py` and
+  `run_smoke_tests.py` now point at `configs/cei_oem`.
 - `README.md` references `tests/smoke_test.py`; it does not exist in this repo.

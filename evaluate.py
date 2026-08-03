@@ -163,6 +163,48 @@ def main():
     print(f"{args.split} mF1: {result['mF1']}")
     print(f"Metrics saved to: {output_path}")
 
+    emit_confusion_matrix(result, output_path, dataset_config["num_classes"])
+
+
+def emit_confusion_matrix(result, output_path, num_classes):
+    """Print the confusion matrix and save a heatmap PNG next to the metrics.
+
+    Best-effort: the numbers are already safe in the JSON, so a failure here
+    (e.g. headless OpenCV) only skips the visualization -- it never fails the
+    evaluation that just finished.
+    """
+    matrix = result.get("confusion_matrix")
+    if not matrix:
+        return
+    try:
+        from src.utils.confusion import (
+            format_confusion,
+            resolve_class_names,
+            save_confusion_heatmap,
+            top_confusions,
+        )
+
+        names = resolve_class_names(num_classes)
+
+        # Global-normalised: every cell is its share of all evaluated pixels, so
+        # the whole matrix sums to 1. This shows where the pixel mass -- correct
+        # and mistaken -- actually lands.
+        print("\nConfusion matrix (global-normalised, whole matrix sums to 100%):")
+        print(format_confusion(matrix, names, normalize="global"))
+
+        # Worst confusions stay row-based (% of the true class), the actionable
+        # "what does each class get mistaken for" view.
+        print("\n  Worst confusions (% of the true class):")
+        for share, true_name, predicted in top_confusions(matrix, names):
+            print(f"    {true_name:<15} -> {predicted:<15} {share:5.1f}%")
+
+        png_path = os.path.splitext(output_path)[0] + "_confusion.png"
+        save_confusion_heatmap(matrix, png_path, names, normalize="global")
+        print(f"\nConfusion heatmap (global) saved to: {png_path}")
+    except Exception as error:  # noqa: BLE001 -- viz must never fail the eval
+        print(f"(confusion matrix is in {output_path}; "
+              f"visualization skipped: {error})")
+
 
 if __name__ == "__main__":
     main()

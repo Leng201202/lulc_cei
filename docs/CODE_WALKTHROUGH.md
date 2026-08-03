@@ -7,7 +7,7 @@ order the code actually runs. For *how to run* the commands, see
 Reading order follows one command:
 
 ```powershell
-python train.py --config configs/unet/cei/unet_effb4_oem2cei.yml
+python train.py --config configs/cei_oem/unet_effb4_oem2cei.yml
 ```
 
 | # | File | Role |
