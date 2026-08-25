@@ -122,4 +122,4 @@ predict_for_gimp.py → (edit *_mask.tif in GIMP) → import_from_gimp.py → da
   IRSA->CEI configs mirror this under `configs/cei_irsa/`. The old
   `configs/unet/cei/` path is gone; `tools/cei/make_smoke_configs.py` and
   `run_smoke_tests.py` now point at `configs/cei_oem`.
-- `README.md` references `tests/smoke_test.py`; it does not exist in this repo.
+- `README.md` references `tests/smoke_test.py`; it does not exist in this repo..
