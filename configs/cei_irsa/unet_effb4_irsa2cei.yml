@@ -7,8 +7,8 @@
 # Regenerate the splits with:
 #   python tools/irsa/make_splits.py --stratify
 experiment:
-  name: cei_irsa01_irsa2cei
-  output_dir: ./experiments/cei_irsa01_irsa2cei
+  name: cei_irsa_m2_unet_effb4
+  output_dir: ./experiments/exp_02_cei_irsa_m2_unet_effb4
 dataset:
   name: IRSA_Map
   root: data/IRSAMap
@@ -45,7 +45,7 @@ model:
   num_classes: 7
 training:
   batch_size: 8
-  epochs: 100
+  epochs: 60
   learning_rate: 0.0001
   optimizer: AdamW
   weight_decay: 0.000001
