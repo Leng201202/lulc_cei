@@ -1,4 +1,6 @@
 import os
+import random
+
 import cv2
 import torch
 import numpy as np
@@ -67,6 +69,17 @@ class OpenEarthMapDataset(Dataset):
         self.file_names = self._read_split(split_path)
 
         self.transform = self._build_transform(split)
+
+        # Opt-in only: unset for every existing config, so this changes
+        # nothing anywhere else. When set (training split only), __getitem__
+        # replaces the plain A.RandomCrop above with a class-targeted crop
+        # search -- see _choose_crop_strategy / _sample_targeted_crop_origin.
+        self.class_aware_sampling = (
+            dataset_config.get("class_aware_sampling") if split == "train" else None
+        )
+        if self.class_aware_sampling:
+            self._crop_pad = self._build_crop_pad()
+            self._post_crop_transform = self._build_post_crop_transform()
 
     def _read_split(self, split_path):
         """Read non-empty sample filenames from a split text file."""
@@ -143,6 +156,85 @@ class OpenEarthMapDataset(Dataset):
             )
 
         return converted
+
+    def _build_crop_pad(self):
+        """Pad up to at least crop_size, same border rule as the normal path's
+        pad_to -- needed before the manual crop search below can run."""
+        return A.PadIfNeeded(
+            min_height=self.crop_size,
+            min_width=self.crop_size,
+            border_mode=cv2.BORDER_CONSTANT,
+            value=0,
+            mask_value=self.ignore_index,
+        )
+
+    def _build_post_crop_transform(self):
+        """Flip/rotate/color/normalize/totensor only -- no crop or pad, since
+        the manual crop search already produced an exact crop_size tile."""
+        dataset_config = self.config["dataset"]
+        transforms = []
+        if dataset_config.get("augment", True):
+            transforms += [
+                A.HorizontalFlip(p=0.5),
+                A.VerticalFlip(p=0.5),
+                A.RandomRotate90(p=0.5),
+            ]
+        if dataset_config.get("color_augment", False):
+            # Image-only (mask untouched); mild by design -- this is meant to
+            # diversify lighting/contrast, not distort class appearance.
+            transforms.append(
+                A.RandomBrightnessContrast(brightness_limit=0.15, contrast_limit=0.15, p=0.5)
+            )
+        transforms += [build_normalize(self.config), ToTensorV2()]
+        return A.Compose(transforms)
+
+    def _sample_crop_origin(self, mask):
+        """A uniformly random crop_size x crop_size window's top-left corner."""
+        height, width = mask.shape
+        max_y = max(height - self.crop_size, 0)
+        max_x = max(width - self.crop_size, 0)
+        return random.randint(0, max_y), random.randint(0, max_x)
+
+    def _sample_targeted_crop_origin(self, mask, target_class, min_fraction, max_attempts):
+        """Retry random crops until one has >= min_fraction of its valid
+        (non-ignore) pixels equal to target_class; plain random crop otherwise.
+        """
+        for _ in range(max_attempts):
+            y, x = self._sample_crop_origin(mask)
+            window = mask[y:y + self.crop_size, x:x + self.crop_size]
+            valid = int((window != self.ignore_index).sum())
+            if valid == 0:
+                continue
+            if (window == target_class).sum() / valid >= min_fraction:
+                return y, x
+        return self._sample_crop_origin(mask)
+
+    def _choose_crop_strategy(self):
+        """Roll the 50/30/20 normal/target/minority split for one sample."""
+        cas = self.class_aware_sampling
+        roll = random.random()
+        if roll < cas["target_class_probability"]:
+            return cas["target_class"]
+        if roll < cas["target_class_probability"] + cas["minority_class_probability"]:
+            return random.choice(cas["minority_classes"])
+        return None  # normal random crop, no class preference
+
+    def _class_aware_crop(self, image, mask):
+        padded = self._crop_pad(image=image, mask=mask)
+        padded_image, padded_mask = padded["image"], padded["mask"]
+
+        target_class = self._choose_crop_strategy()
+        if target_class is None:
+            y, x = self._sample_crop_origin(padded_mask)
+        else:
+            cas = self.class_aware_sampling
+            y, x = self._sample_targeted_crop_origin(
+                padded_mask, target_class, cas["min_class_fraction"], cas["max_attempts"]
+            )
+
+        crop_image = padded_image[y:y + self.crop_size, x:x + self.crop_size]
+        crop_mask = padded_mask[y:y + self.crop_size, x:x + self.crop_size]
+        return self._post_crop_transform(image=crop_image, mask=crop_mask)
 
     def _build_transform(self, split):
         """Build split-specific image and mask transformations."""
@@ -232,7 +324,10 @@ class OpenEarthMapDataset(Dataset):
         mask = self._convert_mask(mask, mask_path, image=image)
 
         # Pass image and mask together to keep random spatial transforms synced.
-        transformed = self.transform(image=image, mask=mask)
+        if self.class_aware_sampling:
+            transformed = self._class_aware_crop(image, mask)
+        else:
+            transformed = self.transform(image=image, mask=mask)
 
         image = transformed["image"]
         # Cross-entropy-style segmentation losses require torch.long targets.

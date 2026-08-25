@@ -186,21 +186,20 @@ def emit_confusion_matrix(result, output_path, num_classes):
 
         names = resolve_class_names(num_classes)
 
-        # Global-normalised: every cell is its share of all evaluated pixels, so
-        # the whole matrix sums to 1. This shows where the pixel mass -- correct
-        # and mistaken -- actually lands.
-        print("\nConfusion matrix (global-normalised, whole matrix sums to 100%):")
-        print(format_confusion(matrix, names, normalize="global"))
+        # Row-normalised: each row (true class) sums to 100%, so the diagonal
+        # is recall and every off-diagonal cell is "% of this true class that
+        # landed on that wrong prediction" -- the actionable per-class view,
+        # and the same default tools/show_confusion.py uses.
+        print("\nConfusion matrix (row-normalised, diagonal = recall):")
+        print(format_confusion(matrix, names, normalize="row"))
 
-        # Worst confusions stay row-based (% of the true class), the actionable
-        # "what does each class get mistaken for" view.
         print("\n  Worst confusions (% of the true class):")
         for share, true_name, predicted in top_confusions(matrix, names):
             print(f"    {true_name:<15} -> {predicted:<15} {share:5.1f}%")
 
         png_path = os.path.splitext(output_path)[0] + "_confusion.png"
-        save_confusion_heatmap(matrix, png_path, names, normalize="global")
-        print(f"\nConfusion heatmap (global) saved to: {png_path}")
+        save_confusion_heatmap(matrix, png_path, names, normalize="row", annotate_all=True)
+        print(f"\nConfusion heatmap (row-normalised) saved to: {png_path}")
     except Exception as error:  # noqa: BLE001 -- viz must never fail the eval
         print(f"(confusion matrix is in {output_path}; "
               f"visualization skipped: {error})")

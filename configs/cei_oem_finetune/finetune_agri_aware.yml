@@ -1,0 +1,86 @@
+# Fine-tune the OEM-trained U-Net+EfficientNet-B4 checkpoint on CEI imagery,
+# with Agriculture-aware crop sampling. Same warm start, same architecture,
+# same 7-class CEI mapping, same crop size, same splits, and same low-LR /
+# early-stopping strategy as configs/cei_oem_finetune/finetune.yml -- the only
+# difference is dataset.class_aware_sampling (below) and dataset.color_augment,
+# both implemented in src/datasets/openearthmap_dataset.py and opt-in only
+# (every other config is unaffected since neither key is set there).
+#
+#   python train.py --config configs/cei_oem_finetune/finetune_agri_aware.yml \
+#       --init-weights experiments/cei_oem_m2_unet_effb4/checkpoints/best_checkpoint.pth
+#
+# Why: after the first fine-tune (experiments/cei_finetune), Agriculture IoU
+# fell 0.303 -> 0.124 even though overall mIoU rose, with the confusion matrix
+# showing Agriculture mainly mistaken for Rangeland and Tree -- CEI's
+# perennial crops (rubber/mango/longan/orchards) visually resemble those
+# classes. This does NOT change class definitions, loss, or class weights --
+# only which 512x512 crops the model trains on, and adds mild color jitter.
+experiment:
+  name: cei_finetune_agri_aware
+  output_dir: ./experiments/cei_finetune_agri_aware
+dataset:
+  name: CEI
+  root: data/CEI_data
+  image_dir: images
+  mask_dir: masks
+  train_split: finetune_splits/train.txt
+  val_split: finetune_splits/val.txt
+  label_map: cei              # CEI ids 1-7 -> classes 0-6; on-disk 0 -> ignore
+  crop_size: 512
+  num_classes: 7
+  ignore_index: 255
+  normalization: imagenet     # must match the OEM checkpoint being warm-started
+  augment: true                # moderate segmentation-safe aug (flip/flip/rot90)
+  color_augment: true          # + mild brightness/contrast jitter, image only
+  eval_mode: full              # full-tile validation, same protocol as the final test
+  class_aware_sampling:
+    # Per-sample crop strategy roll, training split only:
+    #   50% normal random crop (remaining probability, no key needed)
+    #   30% Agriculture-focused crop
+    #   20% minority-class-focused crop
+    # A "focused" crop retries up to max_attempts random locations for one
+    # whose target class covers >= min_class_fraction of its valid pixels,
+    # falling back to a plain random crop if none qualify. Coverage of CEI's
+    # different Agriculture appearances (rubber/mango/longan/young & mature
+    # plantations/row crops) comes for free: the strategy is re-rolled for
+    # every sample, and DataLoader shuffling already cycles through all 90
+    # training tiles, so Agriculture-focused draws land across whichever of
+    # them actually contain it, not one fixed image.
+    #
+    # minority_classes = Water(3) / Non-vegetated(6), not the more "obviously
+    # rare" Building/Road: the first fine-tune's confusion matrix showed
+    # Agriculture's problem isn't low pixel share, it's precision -- 58.2% of
+    # everything predicted Agriculture was actually Water (flooded rice
+    # paddies read as water bodies) and 24.4% was actually Non-vegetated,
+    # versus 0.2%/0.1% for Building/Road. Targeting those two directly gives
+    # the model more clean, correctly-labeled Water/Non-vegetated examples to
+    # stop it over-predicting Agriculture onto them.
+    target_class: 1              # CEI internal index 1 = Agriculture
+    target_class_probability: 0.3
+    minority_classes: [3, 6]     # Water(3) / Non-vegetated(6)
+    minority_class_probability: 0.2
+    min_class_fraction: 0.20
+    max_attempts: 20
+model:
+  name: unet
+  encoder_name: efficientnet-b4
+  encoder_weights: imagenet    # ignored: --init-weights forces this to null
+  in_channels: 3
+  num_classes: 7
+training:
+  batch_size: 8
+  epochs: 50                  # ceiling; early stopping normally ends it sooner
+  learning_rate: 0.00001       # 1e-5, low LR for warm-started fine-tuning
+  optimizer: AdamW
+  weight_decay: 0.000001
+  loss: cross_entropy          # unchanged on purpose -- testing sampling alone
+  scheduler: none
+  mix_precision: true
+  num_workers: 0               # avoids the Windows full-image-val OOM seen elsewhere
+  early_stopping_patience: 15  # stop if val mIoU hasn't improved in 15 epochs
+metrics:
+  - OA
+  - mIoU
+  - mF1
+  - per_class_IoU
+  - per_class_F1

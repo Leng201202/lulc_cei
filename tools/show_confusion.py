@@ -41,6 +41,11 @@ def main():
     parser.add_argument("--counts", action="store_true",
                         help="Alias for --normalize count.")
     parser.add_argument("--heatmap", default=None, help="Also write a PNG heatmap.")
+    parser.add_argument("--decimals", type=int, default=2,
+                        help="Decimal places for percentage cells (default: 2).")
+    parser.add_argument("--all-cells", action="store_true",
+                        help="Annotate every heatmap cell, even values that "
+                             "round to 0.0 (normally left blank).")
     parser.add_argument("--top", type=int, default=6,
                         help="How many worst confusions to list (0 to skip).")
     args = parser.parse_args()
@@ -64,7 +69,8 @@ def main():
     print(f"  OA {result.get('OA'):.4f}  mIoU {result.get('mIoU'):.4f}  "
           f"mF1 {result.get('mF1'):.4f}\n")
 
-    print(format_confusion(matrix, names, normalize=normalize, fraction=args.fraction))
+    print(format_confusion(matrix, names, normalize=normalize, fraction=args.fraction,
+                           decimals=args.decimals))
 
     if args.top:
         print("\n  Worst confusions:")
@@ -72,7 +78,8 @@ def main():
             print(f"    {true_name:<15} -> {predicted:<15} {share:5.1f}%")
 
     if args.heatmap:
-        save_confusion_heatmap(matrix, args.heatmap, names, normalize=normalize)
+        save_confusion_heatmap(matrix, args.heatmap, names, normalize=normalize,
+                               decimals=args.decimals, annotate_all=args.all_cells)
         print(f"\nheatmap written to {args.heatmap}")
 
 

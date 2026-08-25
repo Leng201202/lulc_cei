@@ -97,11 +97,12 @@ def normalize_confusion(matrix, mode="row"):
     )
 
 
-def format_confusion(matrix, names=None, normalize="row", fraction=False):
+def format_confusion(matrix, names=None, normalize="row", fraction=False, decimals=2):
     """Return the confusion matrix as a printable string.
 
     ``normalize`` selects row / col / global / count (see ``normalize_confusion``).
     ``fraction`` shows 0-1 floats instead of percentages (ignored for counts).
+    ``decimals`` controls the percentage cells (ignored for counts/fraction).
     """
     matrix = np.asarray(matrix, dtype=np.int64)
     names = names or resolve_class_names(matrix.shape[0])
@@ -110,6 +111,7 @@ def format_confusion(matrix, names=None, normalize="row", fraction=False):
     if not counts and not fraction:
         data = data * 100.0
 
+    near_zero_floor = 0.0005 if fraction else 0.5 * (10.0 ** -decimals)
     lines = [" " * 17 + "".join(f"{_short(n):>8}" for n in names),
              " " * 17 + "-" * (8 * len(names))]
     for row, name in enumerate(names):
@@ -119,11 +121,11 @@ def format_confusion(matrix, names=None, normalize="row", fraction=False):
             if counts:
                 cells.append(f"{int(value):>8d}")
             else:
-                near_zero = value < (0.0005 if fraction else 0.05)
+                near_zero = value < near_zero_floor
                 if near_zero and row != column:
                     cells.append(f"{'.':>8}")
                 else:
-                    text = f"{value:.3f}" if fraction else f"{value:.1f}"
+                    text = f"{value:.3f}" if fraction else f"{value:.{decimals}f}"
                     cells.append(f"{text + ('*' if row == column else ''):>8}")
         lines.append(f"  {name:<15}" + "".join(cells))
 
@@ -154,7 +156,8 @@ def top_confusions(matrix, names=None, k=6):
     return sorted(pairs, reverse=True)[:k]
 
 
-def save_confusion_heatmap(matrix, path, names=None, normalize="row", decimals=1):
+def save_confusion_heatmap(matrix, path, names=None, normalize="row", decimals=2,
+                           annotate_all=False):
     """Write a heatmap PNG under the given normalization. cv2 only, no plotting dep.
 
     ``normalize`` is one of row / col / global / both / count (see
@@ -164,7 +167,9 @@ def save_confusion_heatmap(matrix, path, names=None, normalize="row", decimals=1
     Shading is scaled to the matrix's own largest cell, so the strongest cell is
     always dark regardless of the normalization's absolute range (a global matrix
     tops out near 30%, a row matrix near 100%). Only cells that would round to a
-    nonzero label at this precision are annotated, to keep the grid readable.
+    nonzero label at this precision are annotated, to keep the grid readable --
+    unless ``annotate_all`` is set, which labels every cell (values below the
+    rounding floor then read 0.0, which may just mean "less than 0.05%").
     """
     import cv2
 
@@ -189,7 +194,7 @@ def save_confusion_heatmap(matrix, path, names=None, normalize="row", decimals=1
             y, x = pad + row * cell, pad + column * cell
             cv2.rectangle(canvas, (x, y), (x + cell, y + cell), color, -1)
             cv2.rectangle(canvas, (x, y), (x + cell, y + cell), (200, 200, 200), 1)
-            if value >= floor:
+            if annotate_all or value >= floor:
                 text = f"{value:.{decimals}f}"
                 (tw, th), _ = cv2.getTextSize(text, font, fscale, 1)
                 tx, ty = x + (cell - tw) // 2, y + (cell + th) // 2

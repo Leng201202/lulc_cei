@@ -199,6 +199,11 @@ def main():
     num_classes = dataset_config["num_classes"]
     ignore_index = dataset_config["ignore_index"]
 
+    # Opt-in only: unset (the default for every existing config) reproduces the
+    # old behavior of always running the full `epochs` count.
+    early_stopping_patience = training_config.get("early_stopping_patience")
+    epochs_without_improvement = 0
+
     for epoch in range(1, epochs + 1):
         print("=" * 60)
         print(f"Epoch {epoch}/{epochs}")
@@ -261,6 +266,9 @@ def main():
         is_best = val_miou is not None and val_miou > best_miou
         if is_best:
             best_miou = val_miou
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
 
         last_checkpoint_path = os.path.join(
             output_dir,
@@ -293,6 +301,11 @@ def main():
                 best_miou=best_miou,
             )
             print(f"Best checkpoint saved at epoch {epoch} with mIoU: {best_miou:.4f}")
+
+        if early_stopping_patience is not None and epochs_without_improvement >= early_stopping_patience:
+            print(f"Early stopping: no val mIoU improvement for "
+                  f"{epochs_without_improvement} epochs (patience={early_stopping_patience}).")
+            break
 
     print("=" * 60)
     print("Training completed.")

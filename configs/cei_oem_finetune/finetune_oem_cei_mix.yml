@@ -1,0 +1,74 @@
+# Joint training: OEM's full training pool (2100 tiles) mixed with CEI tiles
+# maesuai_1..10, warm-started from the same OEM baseline checkpoint as the
+# other fine-tune experiments. Uses dataset.name: OEM_CEI_Mix (see
+# src/datasets/dataset_factory.py:build_mix_dataset) to concatenate two
+# independently-configured sources -- reuses OpenEarthMapDataset unchanged.
+#
+#   python train.py --config configs/cei_oem_finetune/finetune_oem_cei_mix.yml \
+#       --init-weights experiments/cei_oem_m2_unet_effb4/checkpoints/best_checkpoint.pth
+#
+# IMPORTANT: maesuai_1..10 is the fixed CEI test set every other experiment in
+# this project (baseline / finetune / finetune_agri_aware) was scored on. This
+# config trains on those exact tiles, so its results are NOT comparable to
+# those -- it needs its own held-out test set, which is why the CEI source
+# below points val/test at completely different tiles: finetune_splits/val.txt
+# (12 tiles) for early stopping, and finetune_splits/train.txt (the other
+# fine-tune's 90-tile pool, never seen by this model) for the final test.
+#
+# The CEI source's train_split (finetune_splits/oem_mix_train_1_10.txt) repeats
+# the 10 tiles 25x (250 lines) so they aren't statistically drowned out by
+# OEM's 2100 -- about a 10.6% CEI share per epoch. Adjust the repeat count by
+# regenerating that file if you want a different mix ratio.
+experiment:
+  name: cei_oem_mix_1_10
+  output_dir: ./experiments/cei_oem_mix_1_10
+dataset:
+  name: OEM_CEI_Mix
+  # Shared across every source below -- architecture/preprocessing stay
+  # identical regardless of which source a sample came from.
+  crop_size: 512
+  num_classes: 7
+  ignore_index: 255
+  normalization: imagenet
+  augment: true
+  eval_mode: full
+  sources:
+    - name: OpenEarthMap
+      root: data/OpenEarthMap/OpenEarthMap_wo_xBD
+      image_dir: <region>/images
+      mask_dir: <region>/labels
+      label_map: oem_to_cei      # OEM raw 1-8 -> CEI classes 0-6
+      train_split: train_split_60.txt
+      # no val_split/test_split: OEM never appears in validation or test here,
+      # so early stopping and final scoring are purely CEI.
+    - name: CEI
+      root: data/CEI_data
+      image_dir: images
+      mask_dir: masks
+      label_map: cei              # CEI ids 1-7 -> classes 0-6; on-disk 0 -> ignore
+      train_split: finetune_splits/oem_mix_train_1_10.txt   # maesuai_1..10, oversampled
+      val_split: finetune_splits/val.txt                     # 12 tiles, disjoint from train
+      test_split: finetune_splits/test_11_100.txt            # maesuai_11..100, sequential
+model:
+  name: unet
+  encoder_name: efficientnet-b4
+  encoder_weights: imagenet    # ignored: --init-weights forces this to null
+  in_channels: 3
+  num_classes: 7
+training:
+  batch_size: 8
+  epochs: 150                  # ceiling; early stopping normally ends it sooner
+  learning_rate: 0.00001       # 1e-5, low LR for warm-started fine-tuning
+  optimizer: AdamW
+  weight_decay: 0.000001
+  loss: cross_entropy
+  scheduler: none
+  mix_precision: true
+  num_workers: 0               # avoids the Windows full-image-val OOM seen elsewhere
+  early_stopping_patience: 15  # stop if val mIoU hasn't improved in 15 epochs
+metrics:
+  - OA
+  - mIoU
+  - mF1
+  - per_class_IoU
+  - per_class_F1
