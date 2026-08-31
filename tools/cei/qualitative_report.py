@@ -225,11 +225,24 @@ def save_panel_figure(path, name, miou, satellite, gt_mask, pred_mask):
 
 def run_source(source, args):
     models = MODEL_TABLES[source]
-    key, note = select_architecture(source, args)
-    info = models[key]
-    experiment = info["experiment"]
+    if args.checkpoint:
+        # Direct override: skip training_logs.json auto-selection and point at
+        # an exact checkpoint (e.g. one that just finished training under a
+        # folder name the registry above doesn't know about yet). Still needs
+        # --model to pick the matching architecture/CEI test config.
+        if not args.model:
+            raise SystemExit("--checkpoint requires --model to pick the matching architecture/config.")
+        key = args.model
+        info = models[key]
+        checkpoint_path = args.checkpoint
+        experiment = os.path.basename(os.path.dirname(os.path.dirname(args.checkpoint)))
+        note = f"explicit --checkpoint override ({args.checkpoint})"
+    else:
+        key, note = select_architecture(source, args)
+        info = models[key]
+        experiment = info["experiment"]
+        checkpoint_path = os.path.join("experiments", experiment, "checkpoints", "best_checkpoint.pth")
     config_path = info["cei_config"]
-    checkpoint_path = os.path.join("experiments", experiment, "checkpoints", "best_checkpoint.pth")
 
     print(f"\n{'=' * 78}\n{source.upper()} -- selected: {key} {ARCH_LABELS[key]}\n{'=' * 78}")
     print(f"  reason:     {note}")
@@ -370,6 +383,11 @@ def main():
     parser.add_argument("--model", default=None,
                         help="Force a specific architecture key (m1..m5), "
                              "skipping auto-selection.")
+    parser.add_argument("--checkpoint", default=None,
+                        help="Exact checkpoint path, bypassing training_logs.json "
+                             "auto-selection entirely (e.g. a checkpoint under a "
+                             "folder name not yet in OEM_MODELS/IRSA_MODELS). "
+                             "Requires --model.")
     parser.add_argument("--num", type=int, default=12, help="Tiles to render per source.")
     parser.add_argument("--order", choices=["worst", "best"], default="worst")
     parser.add_argument("--tiles", default=None,

@@ -1,0 +1,82 @@
+{
+  "source": "oem",
+  "model_key": "m2",
+  "architecture": "U-Net EfficientNet-B4",
+  "selection_reason": "explicit --checkpoint override (experiments/exp_02_cei_oem_m2_unet_effb4/checkpoints/best_checkpoint.pth)",
+  "experiment": "exp_02_cei_oem_m2_unet_effb4",
+  "checkpoint": "experiments/exp_02_cei_oem_m2_unet_effb4/checkpoints/best_checkpoint.pth",
+  "config": "configs/cei_oem/test/test_m2_uneteffb4_cei.yml",
+  "tta": true,
+  "cei_test": {
+    "OA": 0.6512438774108886,
+    "mIoU": 0.41546269124030655,
+    "mF1": 0.5375535354649148
+  },
+  "worst_confusions": [
+    {
+      "true": "Non-vegetated",
+      "predicted": "Rangeland",
+      "percent_of_true_class": 68.63460404057267
+    },
+    {
+      "true": "Water",
+      "predicted": "Agriculture",
+      "percent_of_true_class": 42.29761881015862
+    },
+    {
+      "true": "Agriculture",
+      "predicted": "Rangeland",
+      "percent_of_true_class": 16.150327113605453
+    },
+    {
+      "true": "Agriculture",
+      "predicted": "Tree",
+      "percent_of_true_class": 12.0991715989055
+    },
+    {
+      "true": "Road",
+      "predicted": "Rangeland",
+      "percent_of_true_class": 10.596124827431213
+    },
+    {
+      "true": "Non-vegetated",
+      "predicted": "Agriculture",
+      "percent_of_true_class": 9.512312993927848
+    },
+    {
+      "true": "Tree",
+      "predicted": "Rangeland",
+      "percent_of_true_class": 7.4487884594249785
+    },
+    {
+      "true": "Road",
+      "predicted": "Tree",
+      "percent_of_true_class": 7.350627668796353
+    }
+  ],
+  "per_tile_mIoU": {
+    "maesuai_1": 0.0457614787591944,
+    "maesuai_2": 0.41474355557064013,
+    "maesuai_3": 0.48452950835439323,
+    "maesuai_4": 0.3495113035443291,
+    "maesuai_5": 0.21620941162109375,
+    "maesuai_6": 0.41542124308259437,
+    "maesuai_7": 0.30653993054724876,
+    "maesuai_8": 0.46658470077042974,
+    "maesuai_9": 0.5257212606708688,
+    "maesuai_10": 0.5237938287234728
+  },
+  "figures_written": [
+    "outputs\\cei_qualitative\\round_6\\oem_m2_exp_02_cei_oem_m2_unet_effb4\\maesuai_1.png",
+    "outputs\\cei_qualitative\\round_6\\oem_m2_exp_02_cei_oem_m2_unet_effb4\\maesuai_5.png",
+    "outputs\\cei_qualitative\\round_6\\oem_m2_exp_02_cei_oem_m2_unet_effb4\\maesuai_7.png",
+    "outputs\\cei_qualitative\\round_6\\oem_m2_exp_02_cei_oem_m2_unet_effb4\\maesuai_4.png",
+    "outputs\\cei_qualitative\\round_6\\oem_m2_exp_02_cei_oem_m2_unet_effb4\\maesuai_2.png",
+    "outputs\\cei_qualitative\\round_6\\oem_m2_exp_02_cei_oem_m2_unet_effb4\\maesuai_6.png",
+    "outputs\\cei_qualitative\\round_6\\oem_m2_exp_02_cei_oem_m2_unet_effb4\\maesuai_8.png",
+    "outputs\\cei_qualitative\\round_6\\oem_m2_exp_02_cei_oem_m2_unet_effb4\\maesuai_3.png",
+    "outputs\\cei_qualitative\\round_6\\oem_m2_exp_02_cei_oem_m2_unet_effb4\\maesuai_10.png",
+    "outputs\\cei_qualitative\\round_6\\oem_m2_exp_02_cei_oem_m2_unet_effb4\\maesuai_9.png"
+  ],
+  "confusion_heatmap": "outputs\\cei_qualitative\\round_6\\oem_m2_exp_02_cei_oem_m2_unet_effb4\\confusion_row.png"
+}

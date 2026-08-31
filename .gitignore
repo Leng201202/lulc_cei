@@ -38,7 +38,6 @@ dist/
 *.egg
 
 # Test outputs
-outputs/
 predictions/
 *.png.bak
 
