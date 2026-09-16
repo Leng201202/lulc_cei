@@ -10,3 +10,4 @@ PyYAML
 tqdm
 scikit-learn
 pandas
+rasterio

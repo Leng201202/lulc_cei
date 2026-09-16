@@ -1,0 +1,76 @@
+# Satlas UPerNet trained on IRSAMap in the 7-class CEI scheme.
+#
+# The IRSA counterpart of configs/cei_oem/satlas_upernet_oem2cei.yml, and the
+# combination the evidence points at: IRSA is the better source for the class
+# that is holding mIoU down. Measured on the CEI test set, every IRSA-trained
+# model beats every OEM-trained one on Non-vegetated --
+#
+#   IRSA:  0.487  0.455  0.443  0.346  0.297
+#   OEM:   0.252  0.218  0.181  0.180  0.140
+#
+# because IRSA's background code (23.6% of its pixels: bare soil, concrete,
+# parking, construction ground) matches what CEI's labellers call Non-vegetated
+# far better than OEM's curated Bareland + Developed space does.
+#
+# Fetch the backbone first:
+#   python tools/fetch_satlas.py
+#
+# Differences from upernet_swinb_irsa2cei.yml, both forced by the encoder:
+#  * normalization: zero_one -- Satlas expects 0-255 divided by 255.
+#  * eval_mode: full -- Swin-V2 takes any input size, so validation scores whole
+#    tiles instead of the 512 centre-crop classic Swin-B is restricted to.
+#
+# Regenerate the splits with:
+#   python tools/irsa/make_splits.py --stratify
+experiment:
+  name: cei_irsa_satlas_upernet_swinv2b
+  output_dir: ./experiments/cei_irsa_satlas_upernet_swinv2b
+dataset:
+  name: IRSA_Map
+  root: data/IRSAMap
+  # IRSA uses flat folders with no <region> level. train and val both come from
+  # train/; the test split lives in test/ and is covered by its own config.
+  image_dir: train/image
+  mask_dir: train/SegLabel_vwsbr
+  train_split: train_split.txt
+  val_split: val_split.txt
+  label_map: irsa_to_cei
+  # IRSA leaves bareland unannotated, so background (code 0) is real
+  # Non-vegetated ground rather than "unlabeled". ~14% of it is near-black
+  # border padding; pixels at or below this brightness go to ignore. This value
+  # must match the test config or class balance shifts between them.
+  nodata_to_ignore: 8
+  image_size: 512
+  crop_size: 512
+  original_size: 1024
+  num_classes: 7
+  ignore_index: 255
+  normalization: zero_one   # required by the Satlas weights
+  augment: false
+  eval_mode: full
+model:
+  name: satlas_upernet
+  # encoder_name is unused -- the Swin-V2-B topology is fixed by the weights.
+  encoder_name: swin_v2_b
+  encoder_weights: satlas    # any truthy value: means "load weights_path"
+  weights_path: pretrain_weight/aerial_swinb_si-e4169eb1.pth
+  decode_channels: 256
+  in_channels: 3
+  num_classes: 7
+training:
+  # Matched to upernet_swinb_irsa2cei.yml.
+  batch_size: 4
+  epochs: 60
+  learning_rate: 0.00006
+  optimizer: AdamW
+  weight_decay: 0.01
+  loss: cross_entropy
+  scheduler: none
+  mix_precision: true
+  num_workers: 0            # Windows: workers re-import CUDA and trip WinError 1455
+metrics:
+  - OA
+  - mIoU
+  - mF1
+  - per_class_IoU
+  - per_class_F1

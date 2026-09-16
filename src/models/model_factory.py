@@ -2,6 +2,7 @@ import segmentation_models_pytorch as smp
 import torch.nn as nn
 
 from src.models.ftunetformer import ft_unetformer
+from src.models.satlas import SatlasUPerNet
 from src.models.unetformer import UNetFormer
 
 
@@ -117,6 +118,22 @@ def build_model(config):
             window_size=model_config.get("window_size", 8),
         )
 
+    if model_name in {"satlas_upernet", "upernet_satlas"}:
+        # Same UPerNet decoder as "upernet" -- only the encoder's pretraining
+        # corpus differs (Satlas aerial RGB instead of ImageNet), so the two
+        # configs form a controlled comparison. encoder_name is ignored: the
+        # Swin-V2-B topology is fixed by the published weights.
+        #
+        # encoder_weights is None during evaluation (evaluate.py clears it) and
+        # when warm-starting, where the checkpoint already carries the encoder;
+        # only a fresh training run reads the Satlas file off disk.
+        return SatlasUPerNet(
+            num_classes=num_classes,
+            weights_path=model_config.get("weights_path") if encoder_weights else None,
+            decoder_channels=model_config.get("decode_channels", 256),
+            in_channels=in_channels,
+        )
+
     if model_name == "segformer":
         model = smp.Segformer(
             encoder_name=encoder_name,
@@ -129,5 +146,5 @@ def build_model(config):
 
     raise ValueError(
         f"Unknown model name: {model_name}. Supported: unet, upernet, "
-        "unetformer, ftunetformer, segformer, deeplabv3."
+        "satlas_upernet, unetformer, ftunetformer, segformer, deeplabv3."
     )

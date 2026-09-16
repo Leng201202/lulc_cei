@@ -6,9 +6,10 @@
 # measures cross-dataset generalization.
 #
 # The key line is dataset.label_map: oem_to_cei, which maps OEM's raw 1-8
-# codes into CEI's 7 training classes: Bareland -> Non-vegetated, Developed
-# space -> ignore (not a channel -- see src/datasets/taxonomy.py), every
-# other class 1:1.
+# codes into CEI's 7 training classes: Bareland and Developed space both ->
+# Non-vegetated, every other class 1:1. Routing Developed space to ignore was
+# tried and measurably hurt the class it was meant to protect -- see
+# src/datasets/taxonomy.py for the numbers.
 experiment:
   name: cei_oem_m2_unet_effb4
   output_dir: ./experiments/exp_02_cei_oem_m2_unet_effb4
@@ -20,7 +21,7 @@ dataset:
   train_split: train_split_60.txt
   val_split: val_split_10.txt
   test_split: test_split_30.txt
-  label_map: oem_to_cei     # OEM raw 1-8 -> CEI classes 0-6 (Developed space ignored)
+  label_map: oem_to_cei     # OEM raw 1-8 -> CEI classes 0-6 (Bareland + Developed space -> Non-vegetated)
   image_size: 512
   crop_size: 512
   original_size: 1024

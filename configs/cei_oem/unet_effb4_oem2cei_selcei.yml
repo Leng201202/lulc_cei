@@ -1,0 +1,73 @@
+# Model 2 (U-Net + EfficientNet-B4): train on OpenEarthMap remapped into CEI's
+# 7-class scheme -- identical to unet_effb4_oem2cei.yml except for how the best
+# checkpoint is chosen.
+#
+# Measured across the ten OEM/IRSA runs, best-val-mIoU on the *source* dataset
+# correlates with CEI test mIoU at r=0.08 for OEM (0.71 for IRSA): picking
+# "best" by OEM validation is close to picking at random as far as CEI is
+# concerned. exp_02 is the clearest case -- it reached a higher OEM val mIoU
+# than the 200-epoch run (0.7596 vs 0.7046) and a *lower* CEI test mIoU
+# (0.4155 vs 0.4529).
+#
+# The `selection` section below points model selection at a held-out CEI split
+# instead. Training data, loss, and the regular val loop are unchanged; only
+# the epoch chosen as "best" differs. The 12 selection tiles share no filenames
+# with test_split.txt (the 10 scored tiles) or with finetune_splits/train.txt.
+experiment:
+  name: cei_oem_m2_unet_effb4_selcei
+  output_dir: ./experiments/exp_03_cei_oem_m2_unet_effb4_selcei
+dataset:
+  name: OpenEarthMap
+  root: data/OpenEarthMap/OpenEarthMap_wo_xBD
+  image_dir: <region>/images
+  mask_dir: <region>/labels
+  train_split: train_split_60.txt
+  val_split: val_split_10.txt
+  test_split: test_split_30.txt
+  label_map: oem_to_cei     # OEM raw 1-8 -> CEI classes 0-6 (Bareland + Developed space -> Non-vegetated)
+  image_size: 512
+  crop_size: 512
+  original_size: 1024
+  num_classes: 7
+  ignore_index: 255
+  normalization: imagenet
+  augment: false            # paper recipe: random crop only
+  eval_mode: full
+
+# Scored every epoch, never trained on. Its mIoU -- not dataset.val_split's --
+# decides which epoch is written to best_checkpoint.pth.
+selection:
+  name: CEI
+  root: data/CEI_data
+  image_dir: images
+  mask_dir: masks
+  val_split: finetune_splits/val.txt   # 12 tiles, disjoint from test and finetune-train
+  label_map: cei            # CEI ids 1-7 -> classes 0-6; on-disk 0 -> ignore
+  crop_size: 1024
+  num_classes: 7
+  ignore_index: 255
+  normalization: imagenet   # must match dataset.normalization
+  eval_mode: full           # whole 1024x1024 tile, no cropping
+
+model:
+  name: unet
+  encoder_name: efficientnet-b4
+  encoder_weights: imagenet
+  in_channels: 3
+  num_classes: 7
+training:
+  batch_size: 8
+  epochs: 100
+  learning_rate: 0.0001
+  optimizer: AdamW
+  weight_decay: 0.000001
+  loss: cross_entropy
+  scheduler: none
+  mix_precision: true
+  num_workers: 0            # Windows: workers re-import CUDA and trip WinError 1455
+metrics:
+  - OA
+  - mIoU
+  - mF1
+  - per_class_IoU
+  - per_class_F1

@@ -1,0 +1,31 @@
+# Satlas UPerNet evaluation: IRSA-trained, tested on CEI.
+#
+#   python evaluate.py --config configs/cei_oem/test/test_satlas_upernet_cei.yml --checkpoint experiments/cei_irsa_satlas_upernet_swinv2b/checkpoints/best_checkpoint.pth --split test --tta
+#
+# No encoder_params/img_size here, unlike test_m4_upernet_cei.yml: Swin-V2 takes
+# the 1024 test tiles directly. evaluate.py clears encoder_weights, so the
+# Satlas file is not re-read -- the checkpoint carries the trained encoder.
+experiment:
+  name: cei_irsa_satlas_upernet_swinv2b
+  output_dir: ./experiments/cei_irsa_satlas_upernet_swinv2b
+dataset:
+  name: CEI
+  root: data/CEI_data
+  image_dir: images
+  mask_dir: masks
+  test_split: test_split.txt
+  label_map: cei
+  crop_size: 1024
+  num_classes: 7
+  ignore_index: 255
+  normalization: zero_one   # must match how the model was trained
+  eval_mode: full
+model:
+  name: satlas_upernet
+  encoder_name: swin_v2_b
+  decode_channels: 256
+  in_channels: 3
+  num_classes: 7
+training:
+  loss: cross_entropy
+  num_workers: 0
