@@ -1,14 +1,24 @@
 # LULC CEI
 
 Semantic-segmentation project for land-use/land-cover (LULC) mapping. The
-current experiment configuration targets the [OpenEarthMap](https://open-earth-map.org/)
-dataset and a U-Net with an EfficientNet-B4 encoder.
+current experiments harmonize OpenEarthMap (OEM) and IRSAMap labels into the
+seven-class CEI taxonomy, compare five segmentation architectures on OEM, and
+measure source-to-CEI domain generalization.
 
 The pipeline now runs end to end: dataset loading, model/loss/optimizer
 construction, a training loop with mixed precision, validation with
 segmentation metrics, checkpointing, evaluation, and inference on new imagery
-are all implemented. The dataset factory is wired for OpenEarthMap; IRSA_Map
-and LoveDA are reserved but not yet implemented.
+are all implemented. The dataset factory supports OpenEarthMap, CEI, and
+IRSAMap; LoveDA is reserved but not yet implemented.
+
+## Documentation
+
+- [Code walkthrough](docs/CODE_WALKTHROUGH.md)
+- [Data preprocessing and augmentation](docs/DATA_PREPROCESSING_AND_AUGMENTATION.md)
+- [DL architecture and experimental setup](docs/DL_ARCHITECTURE_AND_EXPERIMENTAL_SETUP.md)
+- [Model training](docs/MODEL_TRAINING.md)
+- [Evaluation metrics](docs/EVALUATION_METRICS.md)
+- [Command-line guide](GUIDELINE.md)
 
 ## Repository Structure
 

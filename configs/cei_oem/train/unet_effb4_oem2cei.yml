@@ -1,0 +1,50 @@
+# exp_1: train on OpenEarthMap, remapped into the CEI 7-class scheme.
+#
+# The model never sees CEI imagery during training -- CEI is the held-out test
+# set (see eval_cei.yml), so the result measures cross-dataset generalization.
+#
+# The key line is dataset.label_map: oem_to_cei, which merges OEM's Bareland and
+# Developed space into CEI's single "Non-vegetated" class, turning OEM's 8
+# classes into CEI's 7. See src/datasets/taxonomy.py.
+experiment:
+  name: cei_exp01_oem2cei
+  output_dir: ./experiments/cei_exp01_oem2cei
+dataset:
+  name: OpenEarthMap
+  root: data/OpenEarthMap/OpenEarthMap_wo_xBD
+  image_dir: <region>/images
+  mask_dir: <region>/labels
+  train_split: train_split_60.txt
+  val_split: val_split_10.txt
+  test_split: test_split_30.txt
+  label_map: oem_to_cei     # OEM raw 1-8 -> CEI classes 0-6 (Bareland+Developed merged)
+  image_size: 512
+  crop_size: 512
+  original_size: 1024
+  num_classes: 7            # 7 real CEI classes; "Unlabeled" is ignore, not a channel
+  ignore_index: 255         # internal ignore (CEI stores 0 on disk; loader converts)
+  normalization: imagenet
+  augment: false            # paper recipe: random crop only
+  eval_mode: full           # full-image validation (pad to /32)
+model:
+  name: unet
+  encoder_name: efficientnet-b4
+  encoder_weights: imagenet
+  in_channels: 3
+  num_classes: 7            # must match dataset.num_classes
+training:
+  batch_size: 8
+  epochs: 200
+  learning_rate: 0.0001
+  optimizer: AdamW
+  weight_decay: 0.000001
+  loss: cross_entropy
+  scheduler: none
+  mix_precision: true
+  num_workers: 4
+metrics:
+  - OA
+  - mIoU
+  - mF1
+  - per_class_IoU
+  - per_class_F1
