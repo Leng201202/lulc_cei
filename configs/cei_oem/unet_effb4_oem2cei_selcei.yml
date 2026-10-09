@@ -24,7 +24,7 @@ dataset:
   train_split: train_split_60.txt
   val_split: val_split_10.txt
   test_split: test_split_30.txt
-  label_map: oem_to_cei     # OEM raw 1-8 -> CEI classes 0-6 (Bareland + Developed space -> Non-vegetated)
+  label_map: oem_to_cei     # OEM raw 1-8 -> CEI classes 0-6 (Developed space -> ignore)
   image_size: 512
   crop_size: 512
   original_size: 1024

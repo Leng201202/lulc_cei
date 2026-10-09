@@ -1,0 +1,40 @@
+# Score any U-Net+EfficientNet-B4 checkpoint on the 64-tile split held out from
+# the 20-tile fine-tune (configs/cei_oem_finetune/finetune_20sel.yml).
+#
+# Use this for BOTH sides of the comparison so the numbers are on equal footing:
+#
+#   # fine-tuned
+#   python evaluate.py --config configs/cei_oem_finetune/test/test_20sel_strict.yml \
+#       --checkpoint experiments/cei_finetune_20sel/checkpoints/best_checkpoint.pth \
+#       --split test --tta
+#
+#   # un-fine-tuned OEM baseline, same 64 tiles
+#   python evaluate.py --config configs/cei_oem_finetune/test/test_20sel_strict.yml \
+#       --checkpoint experiments/cei_oem_m2_unet_effb4/checkpoints/best_checkpoint.pth \
+#       --split test --tta --output experiments/cei_oem_m2_unet_effb4/logs/test_20sel_strict.json
+#
+# 64 = the 98 tiles of test_split.txt minus the 20 fine-tune tiles minus the 14
+# early-stopping tiles, so nothing here was seen by the model in any capacity.
+experiment:
+  name: cei_finetune_20sel
+  output_dir: ./experiments/cei_finetune_20sel
+dataset:
+  name: CEI
+  root: data/CEI_data
+  image_dir: images
+  mask_dir: masks
+  test_split: finetune_splits/test_20sel_strict.txt
+  label_map: cei            # CEI ids 1-7 -> classes 0-6; on-disk 0 -> ignore
+  crop_size: 1024
+  num_classes: 7
+  ignore_index: 255
+  normalization: imagenet   # must match how the checkpoint was trained
+  eval_mode: full           # score the whole 1024x1024 tile, no cropping
+model:
+  name: unet
+  encoder_name: efficientnet-b4
+  in_channels: 3
+  num_classes: 7
+training:
+  loss: cross_entropy       # used to report test loss
+  num_workers: 0

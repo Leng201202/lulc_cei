@@ -10,7 +10,8 @@
 #
 # because IRSA's background code (23.6% of its pixels: bare soil, concrete,
 # parking, construction ground) matches what CEI's labellers call Non-vegetated
-# far better than OEM's curated Bareland + Developed space does.
+# far better than OEM's curated Bareland alone does (Developed space is
+# excluded from training -- see src/datasets/taxonomy.py).
 #
 # Fetch the backbone first:
 #   python tools/fetch_satlas.py

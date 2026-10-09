@@ -1,0 +1,70 @@
+# Few-shot fine-tune of the OEM-trained U-Net+EfficientNet-B4 on five hand-picked
+# CEI tiles: maesuai_24, _10, _35, _76, _39.
+#
+#   python train.py --config configs/cei_oem_finetune/finetune_5sel.yml \
+#       --init-weights experiments/cei_oem_m2_unet_effb4/checkpoints/best_checkpoint.pth
+#
+# Same architecture / preprocessing / normalization as the OEM baseline it warm-
+# starts from -- only the data, learning rate and augmentation change, exactly
+# as in finetune.yml (which uses the full 90-tile pool instead of five tiles).
+#
+# SPLIT HYGIENE -- the reason this config does not reuse test_split.txt:
+# all five training tiles are members of test_split.txt (the 98-tile set every
+# round_10 number was scored on), so scoring this model there would be training
+# on the test set. Three disjoint files are used instead:
+#
+#   train  finetune_splits/train_5sel.txt        5 tiles, each repeated 12x
+#   val    finetune_splits/val.txt              12 tiles, early stopping only
+#   test   finetune_splits/test_5sel_strict.txt 81 tiles, never seen at all
+#
+# The 12x repeat is the convention from tools/cei/build_finetune_splits.py
+# (--oversample-target 60): OpenEarthMapDataset treats each split-file line as
+# an independent sample, so one epoch draws 60 different random 512x512
+# crops/flips/rotations of the five images rather than five fixed samples.
+#
+# To compare against the un-fine-tuned baseline, score it on the SAME 81 tiles:
+#   python evaluate.py --config configs/cei_oem_finetune/test/test_5sel_strict.yml \
+#       --checkpoint experiments/cei_oem_m2_unet_effb4/checkpoints/best_checkpoint.pth \
+#       --split test --tta
+# round_10's 0.6199 is NOT a valid baseline here -- different tile set.
+experiment:
+  name: cei_finetune_15sel
+  output_dir: ./experiments/cei_finetune_15sel
+dataset:
+  name: CEI
+  root: data/CEI_data
+  image_dir: images
+  mask_dir: masks
+  train_split: finetune_splits/train_10sel.txt
+  val_split: finetune_splits/val.txt
+  test_split: finetune_splits/test_10sel_strict.txt
+  label_map: cei              # CEI ids 1-7 -> classes 0-6; on-disk 0 -> ignore
+  crop_size: 512
+  num_classes: 7
+  ignore_index: 255
+  normalization: imagenet     # must match the OEM checkpoint being warm-started
+  augment: true               # flip/rot90; matters more than usual with 5 tiles
+  eval_mode: full             # full-tile validation, same protocol as the test
+model:
+  name: unet
+  encoder_name: efficientnet-b4
+  encoder_weights: imagenet   # ignored: --init-weights forces this to null
+  in_channels: 3
+  num_classes: 7
+training:
+  batch_size: 8
+  epochs: 40                  # ceiling; early stopping normally ends it sooner
+  learning_rate: 0.00001      # 1e-5, low LR for warm-started fine-tuning
+  optimizer: AdamW
+  weight_decay: 0.000001
+  loss: cross_entropy
+  scheduler: none
+  mix_precision: true
+  num_workers: 0              # avoids the Windows full-image-val OOM seen elsewhere
+  early_stopping_patience: 15 # stop if val mIoU hasn't improved in 15 epochs
+metrics:
+  - OA
+  - mIoU
+  - mF1
+  - per_class_IoU
+  - per_class_F1
