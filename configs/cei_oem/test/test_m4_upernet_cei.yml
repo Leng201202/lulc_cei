@@ -29,7 +29,7 @@ dataset:
   eval_mode: full           # score the whole 1024x1024 tile, no cropping
 model:
   name: upernet
-  encoder_name: tu-swin_base_patch4_window7_224.ms_in22k_ft_in1k
+  encoder_name: tu-swin_base_patch4_window7_224
   encoder_params:
     # Not boilerplate: Swin is built for a fixed input size. Test tiles are
     # 1024, not the 512 training crop. Swin's weights are resolution-

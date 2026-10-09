@@ -1,0 +1,67 @@
+# Satlas variant of model 4: the same UPerNet decoder over a Swin-V2-B encoder
+# pretrained on Satlas aerial RGB (NAIP, 0.5-2 m/px) instead of ImageNet.
+#
+# Why: every other backbone here starts from ImageNet, learned on ground-level
+# photographs, and CEI imagery is ~40% darker with a blue cast relative to both
+# OEM and IRSA (mean RGB 54/69/81 vs ~102/105/96 and ~91/97/91). Satlas is
+# pretrained on nadir aerial RGB at the same rough GSD as the maesuai tiles, so
+# this tests whether a domain-matched encoder narrows that gap.
+#
+# Fetch the weights first:
+#   python tools/fetch_satlas.py
+#
+# Two deliberate differences from upernet_swinb_oem2cei.yml beyond the encoder:
+#
+#  * normalization: zero_one. Satlas states "the 0-255 pixel values should be
+#    divided by 255 so they are 0-1" -- ImageNet mean/std here would be the same
+#    class of mistake as loading the OEM-SAR U-Net with imagenet stats.
+#  * eval_mode: full. Classic Swin-B asserts on a fixed input size, which is why
+#    m4 has to centre-crop at validation; Swin-V2's continuous position bias
+#    takes any size (verified at 512, 1024 and 1024x896), so validation can
+#    score whole tiles like every non-Swin model.
+experiment:
+  name: cei_satlas_upernet_swinv2b
+  output_dir: ./experiments/cei_oem_satlas_upernet_swinv2b
+dataset:
+  name: OpenEarthMap
+  root: data/OpenEarthMap/OpenEarthMap_wo_xBD
+  image_dir: <region>/images
+  mask_dir: <region>/labels
+  train_split: train_split_60.txt
+  val_split: val_split_10.txt
+  test_split: test_split_30.txt
+  label_map: oem_to_cei     # Bareland -> Non-vegetated; Developed space -> ignore
+  image_size: 512
+  crop_size: 512
+  original_size: 1024
+  num_classes: 7
+  ignore_index: 255
+  normalization: zero_one   # required by the Satlas weights -- see header
+  augment: false
+  eval_mode: full
+model:
+  name: satlas_upernet
+  # encoder_name is unused -- the Swin-V2-B topology is fixed by the weights.
+  encoder_name: swin_v2_b
+  encoder_weights: satlas    # any truthy value: means "load weights_path"
+  weights_path: pretrain_weight/aerial_swinb_si-e4169eb1.pth
+  decode_channels: 256
+  in_channels: 3
+  num_classes: 7
+training:
+  # Matched to upernet_swinb_oem2cei.yml: same ~97M-param scale, same schedule.
+  batch_size: 4
+  epochs: 60
+  learning_rate: 0.00006
+  optimizer: AdamW
+  weight_decay: 0.01
+  loss: cross_entropy
+  scheduler: none
+  mix_precision: true
+  num_workers: 0
+metrics:
+  - OA
+  - mIoU
+  - mF1
+  - per_class_IoU
+  - per_class_F1

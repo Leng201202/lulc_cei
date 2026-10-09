@@ -1,0 +1,32 @@
+# Model 1 (IRSA) in-domain test: FT-UNetFormer + Swin-B, IRSA-trained, scored on
+# IRSA's own 912-tile test split. The gap between this and
+# test_m1_ftunetformer_on_cei.yml is the cross-dataset generalisation cost.
+#
+#   python evaluate.py --config configs/cei_irsa/test/test_m1_ftunetformer_on_irsa.yml --checkpoint experiments/cei_irsa_m1_ftunetformer_swinb/checkpoints/best_checkpoint.pth --split test --tta
+experiment:
+  name: cei_irsa_m1_ftunetformer_swinb
+  output_dir: ./experiments/cei_irsa_m1_ftunetformer_swinb
+dataset:
+  name: IRSA_Map
+  root: data/IRSAMap
+  # IRSA keeps its splits in separate directory trees, so test points at test/.
+  image_dir: test/image
+  mask_dir: test/SegLabel_vwsbr
+  test_split: test_split.txt
+  label_map: irsa_to_cei
+  nodata_to_ignore: 8       # must match training, or the classes shift
+  crop_size: 1024
+  num_classes: 7
+  ignore_index: 255
+  normalization: imagenet
+  eval_mode: full
+model:
+  name: ftunetformer
+  encoder_name: swin_base_patch4_window7_224
+  decode_channels: 256
+  window_size: 8
+  in_channels: 3
+  num_classes: 7
+training:
+  loss: cross_entropy
+  num_workers: 4

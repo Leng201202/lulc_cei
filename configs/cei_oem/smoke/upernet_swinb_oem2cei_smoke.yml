@@ -20,10 +20,10 @@ dataset:
   ignore_index: 255
   normalization: imagenet
   augment: false
-  eval_mode: full
+  eval_mode: crop
 model:
   name: upernet
-  encoder_name: tu-swin_base_patch4_window7_224.ms_in22k_ft_in1k
+  encoder_name: tu-swin_base_patch4_window7_224
   encoder_weights: imagenet
   encoder_params:
     img_size: 512

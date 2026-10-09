@@ -56,11 +56,11 @@ between epochs 2 and 5, so any ordering this early is noise.
 ## Train
 
 ```powershell
-python train.py --config configs/unet/cei/unet_effb4_oem2cei.yml
-python train.py --config configs/unet/cei/unetformer_r101_oem2cei.yml
-python train.py --config configs/unet/cei/ftunetformer_swinb_oem2cei.yml
-python train.py --config configs/unet/cei/upernet_swinb_oem2cei.yml
-python train.py --config configs/unet/cei/segformer_mitb5_oem2cei.yml
+python train.py --config configs/cei_oem/unet_effb4_oem2cei.yml
+python train.py --config configs/cei_oem/unetformer_r101_oem2cei.yml
+python train.py --config configs/cei_oem/ftunetformer_swinb_oem2cei.yml
+python train.py --config configs/cei_oem/upernet_swinb_oem2cei.yml
+python train.py --config configs/cei_oem/segformer_mitb5_oem2cei.yml
 ```
 
 Each writes to its own `experiments/<name>/`, so the four runs never collide.
@@ -87,15 +87,15 @@ There is no resume flag: re-running starts from scratch and overwrites the folde
 Pair each model's test config with its own checkpoint:
 
 ```powershell
-python evaluate.py --config configs/unet/cei/test/test_m2_uneteffb4_cei.yml --checkpoint experiments/cei_exp01_oem2cei/checkpoints/best_checkpoint.pth --split test --tta --output experiments/cei_exp01_oem2cei/logs/cei_test_tta.json
+python evaluate.py --config configs/cei_oem/test/test_m2_uneteffb4_cei.yml --checkpoint experiments/cei_exp01_oem2cei/checkpoints/best_checkpoint.pth --split test --tta --output experiments/cei_exp01_oem2cei/logs/cei_test_tta.json
 
-python evaluate.py --config configs/unet/cei/test/test_m3_unetformer_cei.yml --checkpoint experiments/cei_m3_unetformer_r101/checkpoints/best_checkpoint.pth --split test --tta --output experiments/cei_m3_unetformer_r101/logs/cei_test_tta.json
+python evaluate.py --config configs/cei_oem/test/test_m3_unetformer_cei.yml --checkpoint experiments/cei_m3_unetformer_r101/checkpoints/best_checkpoint.pth --split test --tta --output experiments/cei_m3_unetformer_r101/logs/cei_test_tta.json
 
-python evaluate.py --config configs/unet/cei/test/test_m1_ftunetformer_cei.yml --checkpoint experiments/cei_m1_ftunetformer_swinb/checkpoints/best_checkpoint.pth --split test --tta --output experiments/cei_m1_ftunetformer_swinb/logs/cei_test_tta.json
+python evaluate.py --config configs/cei_oem/test/test_m1_ftunetformer_cei.yml --checkpoint experiments/cei_m1_ftunetformer_swinb/checkpoints/best_checkpoint.pth --split test --tta --output experiments/cei_m1_ftunetformer_swinb/logs/cei_test_tta.json
 
-python evaluate.py --config configs/unet/cei/test/test_m4_upernet_cei.yml --checkpoint experiments/cei_m4_upernet_swinb/checkpoints/best_checkpoint.pth --split test --tta --output experiments/cei_m4_upernet_swinb/logs/cei_test_tta.json
+python evaluate.py --config configs/cei_oem/test/test_m4_upernet_cei.yml --checkpoint experiments/cei_m4_upernet_swinb/checkpoints/best_checkpoint.pth --split test --tta --output experiments/cei_m4_upernet_swinb/logs/cei_test_tta.json
 
-python evaluate.py --config configs/unet/cei/test/test_m5_segformer_cei.yml --checkpoint experiments/cei_m5_segformer_mitb5/checkpoints/best_checkpoint.pth --split test --tta --output experiments/cei_m5_segformer_mitb5/logs/cei_test_tta.json
+python evaluate.py --config configs/cei_oem/test/test_m5_segformer_cei.yml --checkpoint experiments/cei_m5_segformer_mitb5/checkpoints/best_checkpoint.pth --split test --tta --output experiments/cei_m5_segformer_mitb5/logs/cei_test_tta.json
 ```
 
 `--tta` averages predictions over 4 flips. It is slower but consistently better
@@ -110,7 +110,7 @@ the confusion matrix to the `--output` file.
 For the in-domain number to compare against:
 
 ```powershell
-python evaluate.py --config configs/unet/cei/unet_effb4_oem2cei.yml --checkpoint experiments/cei_exp01_oem2cei/checkpoints/best_checkpoint.pth --split test --tta --output experiments/cei_exp01_oem2cei/logs/oem_test_tta.json
+python evaluate.py --config configs/cei_oem/unet_effb4_oem2cei.yml --checkpoint experiments/cei_exp01_oem2cei/checkpoints/best_checkpoint.pth --split test --tta --output experiments/cei_exp01_oem2cei/logs/oem_test_tta.json
 ```
 
 The gap between the two is the cross-dataset generalization result exp_1 exists
@@ -119,7 +119,7 @@ to measure.
 ## Predict masks
 
 ```powershell
-python predict.py --config configs/unet/cei/test_cei.yml --checkpoint experiments/cei_exp01_oem2cei/checkpoints/best_checkpoint.pth --input data/CEI_data/images --output experiments/cei_exp01_oem2cei/predictions --panel --tta
+python predict.py --config configs/cei_oem/test/test_m2_uneteffb4_cei.yml --checkpoint experiments/cei_exp01_oem2cei/checkpoints/best_checkpoint.pth --input data/CEI_data/images --output experiments/cei_exp01_oem2cei/predictions --panel --tta
 ```
 
 `--panel` also saves an image+prediction side-by-side view per tile, which is the
@@ -145,8 +145,8 @@ are kept; pass `--exclude-blank` to drop them.
 
 | Item | Value |
 | --- | --- |
-| Train config | `configs/unet/cei/unet_effb4_oem2cei.yml` |
-| Test config | `configs/unet/cei/test_cei.yml` |
+| Train config | `configs/cei_oem/unet_effb4_oem2cei.yml` |
+| Test config | `configs/cei_oem/test/test_m2_uneteffb4_cei.yml` |
 | Class definitions | `src/datasets/taxonomy.py` |
 | Code explained | `docs/CODE_WALKTHROUGH.md` |
 

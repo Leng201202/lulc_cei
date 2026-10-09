@@ -38,7 +38,6 @@ dist/
 *.egg
 
 # Test outputs
-outputs/
 predictions/
 *.png.bak
 
@@ -52,4 +51,3 @@ logs/
 
 # OS files
 Thumbs.db
-/output/*

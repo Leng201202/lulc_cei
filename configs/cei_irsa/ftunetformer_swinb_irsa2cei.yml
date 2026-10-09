@@ -1,0 +1,66 @@
+# Model 1: FT-UNetFormer (Swin-B encoder + Global-Local Transformer decoder),
+# trained on IRSAMap in the 7-class CEI scheme.
+#
+# The IRSA counterpart of configs/cei_oem/ftunetformer_swinb_oem2cei.yml. Same
+# model and recipe -- only the training data differs, so the two are directly
+# comparable on the shared CEI test set.
+#
+# The official release loads GeoSeg's stseg_base.pth, which is not redistributed.
+# src/models/ftunetformer.py instead maps timm's ImageNet-22k Swin-B checkpoint
+# onto the backbone (325/357 tensors; the rest are computed index buffers and the
+# stage-output norms GeoSeg adds, which have no pretrained counterpart).
+#
+# Regenerate the splits with:
+#   python tools/irsa/make_splits.py --stratify
+experiment:
+  name: cei_irsa_m1_ftunetformer_swinb
+  output_dir: ./experiments/cei_irsa_m1_ftunetformer_swinb
+dataset:
+  name: IRSA_Map
+  root: data/IRSAMap
+  # IRSA uses flat folders with no <region> level. train and val both come from
+  # train/; the test split lives in test/ and is covered by its own config.
+  image_dir: train/image
+  mask_dir: train/SegLabel_vwsbr
+  train_split: train_split.txt
+  val_split: val_split.txt
+  label_map: irsa_to_cei
+  # IRSA leaves bareland unannotated, so background (code 0) is real Non-vegetated
+  # ground rather than "unlabeled". But ~14% of it is near-black border padding;
+  # pixels at or below this brightness are sent to ignore. Set null to disable.
+  nodata_to_ignore: 8
+  image_size: 512
+  crop_size: 512
+  original_size: 1024
+  num_classes: 7
+  ignore_index: 255
+  normalization: imagenet
+  augment: false
+  eval_mode: full
+model:
+  name: ftunetformer
+  # encoder_name is unused here -- FT-UNetFormer fixes the Swin-B topology
+  # (embed_dim 128, depths 2/2/18/2, heads 4/8/16/32). Kept for readability.
+  encoder_name: swin_base_patch4_window7_224
+  encoder_weights: imagenet    # null trains the encoder from scratch
+  decode_channels: 256
+  window_size: 8
+  in_channels: 3
+  num_classes: 7
+training:
+  # ~96M params, so the batch matches the other transformer model.
+  batch_size: 4
+  epochs: 100
+  learning_rate: 0.00006
+  optimizer: AdamW
+  weight_decay: 0.01
+  loss: cross_entropy
+  scheduler: none
+  mix_precision: true
+  num_workers: 4
+metrics:
+  - OA
+  - mIoU
+  - mF1
+  - per_class_IoU
+  - per_class_F1

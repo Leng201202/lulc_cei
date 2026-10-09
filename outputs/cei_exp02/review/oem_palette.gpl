@@ -1,0 +1,13 @@
+GIMP Palette
+Name: OpenEarthMap
+Columns: 3
+#
+128   0   0	Bareland
+  0 255  36	Rangeland
+148 148 148	Developed space
+255 255 255	Road
+ 34  97  38	Tree
+  0  69 255	Water
+ 75 181  73	Agriculture land
+222  31   7	Building
+  0   0   0	Unlabeled (ignore)

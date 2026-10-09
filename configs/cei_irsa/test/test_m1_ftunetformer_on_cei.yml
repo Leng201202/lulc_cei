@@ -1,0 +1,33 @@
+# Model 1 (IRSA) cross-dataset test: FT-UNetFormer + Swin-B, IRSA-trained,
+# scored on the 100 CEI tiles. This is the number to compare against the
+# OEM-trained FT-UNetFormer (configs/cei_oem/test/test_m1_ftunetformer_cei.yml).
+#
+#   python evaluate.py --config configs/cei_irsa/test/test_m1_ftunetformer_on_cei.yml --checkpoint experiments/cei_irsa_m1_ftunetformer_swinb/checkpoints/best_checkpoint.pth --split test --tta
+experiment:
+  name: cei_irsa_m1_ftunetformer_swinb
+  output_dir: ./experiments/cei_irsa_m1_ftunetformer_swinb    # fallback when --output is omitted
+dataset:
+  name: CEI
+  root: data/CEI_data
+  # CEI keeps images and masks in two flat folders (no <region> level); mask
+  # and image share the same filename: images/maesuai_2.tif -> masks/maesuai_2.tif
+  image_dir: images
+  mask_dir: masks
+  test_split: test_split.txt
+  label_map: cei            # CEI ids 1-7 -> classes 0-6; on-disk 0 -> ignore
+  crop_size: 1024
+  num_classes: 7
+  ignore_index: 255
+  normalization: imagenet   # must match how the model was trained
+  eval_mode: full
+model:
+  name: ftunetformer
+  # encoder_name is unused -- FT-UNetFormer fixes the Swin-B topology.
+  encoder_name: swin_base_patch4_window7_224
+  decode_channels: 256
+  window_size: 8
+  in_channels: 3
+  num_classes: 7
+training:
+  loss: cross_entropy       # used to report test loss
+  num_workers: 4

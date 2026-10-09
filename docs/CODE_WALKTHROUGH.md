@@ -1,5 +1,33 @@
 # Code Walkthrough
 
+A line-by-line explanation of every Python file in the training pipeline, in the
+order the code actually runs. For *how to run* the commands, see
+[GUIDELINE.md](../GUIDELINE.md); for architecture, see [README.md](../README.md).
+
+Reading order follows one command:
+
+```powershell
+python train.py --config configs/cei_oem/unet_effb4_oem2cei.yml
+```
+
+| # | File | Role |
+| --- | --- | --- |
+| 1 | `train.py` | the conductor: sets everything up, runs the epoch loop |
+| 2 | `src/utils/config.py` | reads the YAML file |
+| 3 | `src/datasets/dataset_factory.py` | picks which dataset class to use |
+| 4 | `src/datasets/taxonomy.py` | the class definitions and label mappings |
+| 5 | `src/datasets/transforms.py` | image normalization |
+| 6 | `src/datasets/openearthmap_dataset.py` | loads and prepares one image+mask |
+| 7 | `src/models/model_factory.py` | builds the neural network |
+| 8 | `src/losses/loss_factory.py` | builds the loss function |
+| 9 | `src/engine/trainer.py` | one epoch of learning |
+| 10 | `src/engine/validator.py` | one epoch of scoring |
+| 11 | `src/metrics/segmentation_metrics.py` | computes OA / mIoU / mF1 |
+| 12 | `src/models/checkpoint.py` | loads saved weights |
+
+---
+
+## 1. `train.py`
 This walkthrough follows the current code as it executes. It covers training,
 evaluation, label harmonization across OpenEarthMap (OEM), IRSAMap, and CEI,
 the five-model OEM-to-CEI experiment, and checkpoint loading.

@@ -1,0 +1,82 @@
+{
+  "source": "oem",
+  "model_key": "m1",
+  "architecture": "FT-UNetFormer Swin-B",
+  "selection_reason": "best native val mIoU 0.7194 @ epoch 95 (not the final epoch, 100)",
+  "experiment": "cei_oem_m1_ftunetformer_swinb",
+  "checkpoint": "experiments\\cei_oem_m1_ftunetformer_swinb\\checkpoints\\best_checkpoint.pth",
+  "config": "configs/cei_oem/test/test_m1_ftunetformer_cei.yml",
+  "tta": true,
+  "cei_test": {
+    "OA": 0.8381466865539551,
+    "mIoU": 0.5637858614774947,
+    "mF1": 0.6860504539326767
+  },
+  "worst_confusions": [
+    {
+      "true": "Non-vegetated",
+      "predicted": "Rangeland",
+      "percent_of_true_class": 60.19173887152107
+    },
+    {
+      "true": "Road",
+      "predicted": "Non-vegetated",
+      "percent_of_true_class": 26.321555848075256
+    },
+    {
+      "true": "Agriculture",
+      "predicted": "Rangeland",
+      "percent_of_true_class": 23.320485321549718
+    },
+    {
+      "true": "Rangeland",
+      "predicted": "Tree",
+      "percent_of_true_class": 12.299559052999376
+    },
+    {
+      "true": "Agriculture",
+      "predicted": "Tree",
+      "percent_of_true_class": 11.774477075168933
+    },
+    {
+      "true": "Building",
+      "predicted": "Water",
+      "percent_of_true_class": 11.71412993331376
+    },
+    {
+      "true": "Building",
+      "predicted": "Non-vegetated",
+      "percent_of_true_class": 9.282948174866139
+    },
+    {
+      "true": "Road",
+      "predicted": "Tree",
+      "percent_of_true_class": 8.67097954859216
+    }
+  ],
+  "per_tile_mIoU": {
+    "maesuai_1": 0.33330663045247394,
+    "maesuai_2": 0.30318713229291155,
+    "maesuai_3": 0.4702372033992287,
+    "maesuai_4": 0.5049363955147812,
+    "maesuai_5": 1.0,
+    "maesuai_6": 0.4603905860609025,
+    "maesuai_7": 0.4292698624437509,
+    "maesuai_8": 0.5371933630637654,
+    "maesuai_9": 0.5194616540103523,
+    "maesuai_10": 0.520762677373279
+  },
+  "figures_written": [
+    "outputs\\cei_qualitative\\oem_m1_cei_oem_m1_ftunetformer_swinb\\maesuai_2.png",
+    "outputs\\cei_qualitative\\oem_m1_cei_oem_m1_ftunetformer_swinb\\maesuai_1.png",
+    "outputs\\cei_qualitative\\oem_m1_cei_oem_m1_ftunetformer_swinb\\maesuai_7.png",
+    "outputs\\cei_qualitative\\oem_m1_cei_oem_m1_ftunetformer_swinb\\maesuai_6.png",
+    "outputs\\cei_qualitative\\oem_m1_cei_oem_m1_ftunetformer_swinb\\maesuai_3.png",
+    "outputs\\cei_qualitative\\oem_m1_cei_oem_m1_ftunetformer_swinb\\maesuai_4.png",
+    "outputs\\cei_qualitative\\oem_m1_cei_oem_m1_ftunetformer_swinb\\maesuai_9.png",
+    "outputs\\cei_qualitative\\oem_m1_cei_oem_m1_ftunetformer_swinb\\maesuai_10.png",
+    "outputs\\cei_qualitative\\oem_m1_cei_oem_m1_ftunetformer_swinb\\maesuai_8.png",
+    "outputs\\cei_qualitative\\oem_m1_cei_oem_m1_ftunetformer_swinb\\maesuai_5.png"
+  ],
+  "confusion_heatmap": "outputs\\cei_qualitative\\oem_m1_cei_oem_m1_ftunetformer_swinb\\confusion_row.png"
+}

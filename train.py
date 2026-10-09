@@ -46,6 +46,17 @@ def validate_config(config):
             f"Got {dataset_config['num_classes']} and {model_config['num_classes']}."
         )
 
+    selection_config = config.get("selection")
+    if selection_config is not None:
+        if selection_config.get("num_classes") != model_config["num_classes"]:
+            raise ValueError(
+                "selection.num_classes must match model.num_classes. "
+                f"Got {selection_config.get('num_classes')} and "
+                f"{model_config['num_classes']}."
+            )
+        if "val_split" not in selection_config:
+            raise KeyError("selection.val_split is required when a selection section is present.")
+
     weight_decay = training_config.get("weight_decay", 0.0)
     if weight_decay is None:
         training_config["weight_decay"] = 0.0
@@ -54,6 +65,45 @@ def validate_config(config):
             "training.weight_decay must be numeric or null. "
             f"Got string value {weight_decay!r}."
         )
+
+
+def build_selection_loader(config, device):
+    """Build the optional target-domain loader that decides "best checkpoint".
+
+    Training on OEM/IRSA and deploying on CEI are two different distributions,
+    and measured across the ten OEM/IRSA runs the source-domain val mIoU
+    correlates with CEI test mIoU at r=0.08 (OEM) -- i.e. not at all. Selecting
+    "best" by source val therefore optimizes a metric that does not track the
+    thing we ship. An optional ``selection`` section (a dataset block pointing
+    at a held-out CEI split) lets model selection score the target domain
+    instead, while training and the regular val loop stay untouched.
+
+    Returns ``(loader, ignore_index)``, or ``(None, None)`` when unset -- which
+    is the default for every existing config, so their behavior is unchanged.
+    """
+    selection_config = config.get("selection")
+    if selection_config is None:
+        return None, None
+
+    # build_dataset only reads the "dataset" key, so the selection block is
+    # handed over as-is rather than being merged into the training dataset.
+    dataset = build_dataset({"dataset": selection_config}, split="val")
+    # Same rule as the val loader: full-image eval yields variable-size tensors
+    # that cannot be stacked into a batch.
+    batch_size = (
+        1 if selection_config.get("eval_mode", "full") == "full"
+        else config["training"]["batch_size"]
+    )
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=config["training"].get("num_workers", 0),
+        pin_memory=device.type == "cuda",
+    )
+    print(f"Selection samples: {len(dataset)} "
+          f"({selection_config['name']} / {selection_config['val_split']})")
+    return loader, selection_config["ignore_index"]
 
 
 def build_optimizer(model, training_config):
@@ -176,6 +226,10 @@ def main():
     print("Training samples:", len(train_dataset))
     print("Validation samples:", len(val_dataset))
 
+    selection_loader, selection_ignore_index = build_selection_loader(config, device)
+    selection_metric = "sel_mIoU" if selection_loader is not None else "val_mIoU"
+    print(f"Best checkpoint selected by: {selection_metric}")
+
     model = build_model(config).to(device)
     if args.init_weights:
         checkpoint = torch.load(args.init_weights, map_location=device)
@@ -198,6 +252,11 @@ def main():
     epochs = training_config["epochs"]
     num_classes = dataset_config["num_classes"]
     ignore_index = dataset_config["ignore_index"]
+
+    # Opt-in only: unset (the default for every existing config) reproduces the
+    # old behavior of always running the full `epochs` count.
+    early_stopping_patience = training_config.get("early_stopping_patience")
+    epochs_without_improvement = 0
 
     for epoch in range(1, epochs + 1):
         print("=" * 60)
@@ -239,6 +298,18 @@ def main():
         print(f"Validation mIoU: {format_metric(val_miou)}")
         print(f"Validation mF1: {format_metric(val_f1)}")
 
+        selection_result = None
+        if selection_loader is not None:
+            selection_result = validate_one_epoch(
+                model,
+                dataloader=selection_loader,
+                criterion=criterion,
+                device=device,
+                num_classes=num_classes,
+                ignore_index=selection_ignore_index,
+            )
+            print(f"Selection mIoU: {format_metric(selection_result['mIoU'])}")
+
         log_item = {
             "epoch": epoch,
             "lr": current_lr,
@@ -251,6 +322,17 @@ def main():
             "per_class_f1": val_result["per_class_f1"],
             "class_support": val_result["class_support"],
         }
+        # Logged next to the source-domain numbers on purpose: the gap between
+        # the two is the cross-domain story, and it is invisible if only the
+        # metric that won gets written down.
+        if selection_result is not None:
+            log_item.update({
+                "sel_loss": selection_result["loss"],
+                "sel_OA": selection_result["OA"],
+                "sel_mIoU": selection_result["mIoU"],
+                "sel_mF1": selection_result["mF1"],
+                "sel_per_class_iou": selection_result["per_class_iou"],
+            })
         logs.append(log_item)
 
         log_path = os.path.join(output_dir, "logs", "training_logs.json")
@@ -258,9 +340,13 @@ def main():
         with open(log_path, "w", encoding="utf-8") as f:
             json.dump(logs, f, indent=4)
 
-        is_best = val_miou is not None and val_miou > best_miou
+        score = val_miou if selection_result is None else selection_result["mIoU"]
+        is_best = score is not None and score > best_miou
         if is_best:
-            best_miou = val_miou
+            best_miou = score
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
 
         last_checkpoint_path = os.path.join(
             output_dir,
@@ -292,11 +378,17 @@ def main():
                 config=config,
                 best_miou=best_miou,
             )
-            print(f"Best checkpoint saved at epoch {epoch} with mIoU: {best_miou:.4f}")
+            print(f"Best checkpoint saved at epoch {epoch} with "
+                  f"{selection_metric}: {best_miou:.4f}")
+
+        if early_stopping_patience is not None and epochs_without_improvement >= early_stopping_patience:
+            print(f"Early stopping: no val mIoU improvement for "
+                  f"{epochs_without_improvement} epochs (patience={early_stopping_patience}).")
+            break
 
     print("=" * 60)
     print("Training completed.")
-    print(f"Best mIoU: {best_miou:.4f}")
+    print(f"Best {selection_metric}: {best_miou:.4f}")
     print(f"Logs saved to: {log_path}")
     print("Output directory:", output_dir)
 

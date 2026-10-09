@@ -1,0 +1,54 @@
+# Fine-tune the OEM-trained U-Net+EfficientNet-B4 checkpoint on CEI imagery.
+#
+# Warm-starts from experiments/cei_oem_m2_unet_effb4/checkpoints/best_checkpoint.pth
+# (never overwritten -- this writes to its own experiments/cei_finetune/ folder):
+#
+#   python train.py --config configs/cei_oem_finetune/finetune.yml \
+#       --init-weights experiments/cei_oem_m2_unet_effb4/checkpoints/best_checkpoint.pth
+#
+# Same architecture, preprocessing, normalization, ignore_index, and CEI
+# 7-class mapping as the OEM baseline -- only the data, learning rate, and
+# augmentation change. Trains on all 90 available CEI training tiles
+# (data/CEI_data/finetune_splits/train.txt); the other 22 labeled tiles are
+# held out fixed: 12 for validation (finetune_splits/val.txt, used for early
+# stopping below) and 10 for the untouched final test set (test_split.txt).
+experiment:
+  name: cei_finetune
+  output_dir: ./experiments/cei_finetune
+dataset:
+  name: CEI
+  root: data/CEI_data
+  image_dir: images
+  mask_dir: masks
+  train_split: finetune_splits/train.txt
+  val_split: finetune_splits/val.txt
+  label_map: cei              # CEI ids 1-7 -> classes 0-6; on-disk 0 -> ignore
+  crop_size: 512
+  num_classes: 7
+  ignore_index: 255
+  normalization: imagenet     # must match the OEM checkpoint being warm-started
+  augment: true                # moderate segmentation-safe aug (flip/flip/rot90)
+  eval_mode: full              # full-tile validation, same protocol as the final test
+model:
+  name: unet
+  encoder_name: efficientnet-b4
+  encoder_weights: imagenet    # ignored: --init-weights forces this to null
+  in_channels: 3
+  num_classes: 7
+training:
+  batch_size: 8
+  epochs: 40                 # ceiling; early stopping normally ends it sooner
+  learning_rate: 0.00001       # 1e-5, low LR for warm-started fine-tuning
+  optimizer: AdamW
+  weight_decay: 0.000001
+  loss: cross_entropy
+  scheduler: none
+  mix_precision: true
+  num_workers: 0               # avoids the Windows full-image-val OOM seen elsewhere
+  early_stopping_patience: 15  # stop if val mIoU hasn't improved in 15 epochs
+metrics:
+  - OA
+  - mIoU
+  - mF1
+  - per_class_IoU
+  - per_class_F1
